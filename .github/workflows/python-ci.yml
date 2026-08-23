@@ -1,0 +1,51 @@
+name: Python SDK CI
+
+on:
+  pull_request:
+    paths:
+      - 'python/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - '.github/workflows/python-ci.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'python/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - '.github/workflows/python-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: uv sync --group dev --locked
+
+      - name: Lint
+        run: uv run ruff check python/src python/tests
+
+      - name: Type check
+        run: uv run mypy python/src
+
+      - name: Test
+        run: uv run pytest
+
+      - name: Build source and wheel distributions
+        run: uv build --out-dir dist
+
+      - name: Validate package metadata and README rendering
+        run: uv run twine check dist/*

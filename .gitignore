@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments and tooling
+.venv/
+venv/
+.uv/
+
+# JavaScript / TypeScript
+node_modules/
+.turbo/
+coverage/
+
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+*.envrc
+
+# Editors and operating systems
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
