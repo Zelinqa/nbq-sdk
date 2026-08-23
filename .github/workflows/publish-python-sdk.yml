@@ -1,0 +1,71 @@
+name: Publish Python SDK to PyPI
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type publish-nbq to confirm the public PyPI release'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    if: github.ref == 'refs/heads/main' && inputs.confirm == 'publish-nbq'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: uv sync --group dev --locked
+
+      - name: Lint
+        run: uv run ruff check python/src python/tests
+
+      - name: Type check
+        run: uv run mypy python/src
+
+      - name: Test
+        run: uv run pytest
+
+      - name: Build source and wheel distributions
+        run: uv build --out-dir dist
+
+      - name: Validate package metadata and README rendering
+        run: uv run twine check dist/*
+
+      - name: Upload immutable distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: nbq-python-distributions
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - name: Download distributions built by the unprivileged job
+        uses: actions/download-artifact@v4
+        with:
+          name: nbq-python-distributions
+          path: dist/
+
+      - name: Publish with PyPI Trusted Publishing
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
