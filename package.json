@@ -43,14 +43,14 @@
   ],
   "sideEffects": false,
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "publishConfig": {
     "access": "public"
   },
   "packageManager": "pnpm@11.17.0",
   "scripts": {
-    "build": "tsup typescript/src/index.ts --format esm,cjs --dts --clean --sourcemap --target node20 --out-dir typescript/dist",
+    "build": "tsup typescript/src/index.ts --format esm,cjs --dts --clean --sourcemap --target node22 --out-dir typescript/dist",
     "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm check:versions",
     "check:versions": "node scripts/check-versions.mjs",
     "lint": "biome check typescript/src typescript/tests scripts",

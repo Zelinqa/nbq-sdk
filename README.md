@@ -38,7 +38,8 @@ See the [Python SDK documentation](./python/README.md) for the full usage guide.
 
 ## TypeScript quick start
 
-The TypeScript SDK supports Node.js 20 or newer and ships both ESM and CommonJS builds.
+The TypeScript SDK supports maintained Node.js LTS releases (Node.js 22 or newer) and ships
+both ESM and CommonJS builds.
 
 ```bash
 pnpm add @zelinqa/nbq
