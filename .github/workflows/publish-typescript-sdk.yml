@@ -1,0 +1,69 @@
+name: Publish TypeScript SDK to npm
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type publish-zelinqa-nbq to confirm the public npm release'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    if: github.ref == 'refs/heads/main' && inputs.confirm == 'publish-zelinqa-nbq'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint, type check, test, and verify versions
+        run: pnpm check
+
+      - name: Build ESM, CommonJS, and type declarations
+        run: pnpm build
+
+      - name: Build the immutable npm tarball
+        run: pnpm pack --pack-destination package-artifacts
+
+      - name: Upload the package built by the unprivileged job
+        uses: actions/upload-artifact@v4
+        with:
+          name: nbq-typescript-package
+          path: package-artifacts/*.tgz
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
+
+      - name: Download the package built by the unprivileged job
+        uses: actions/download-artifact@v4
+        with:
+          name: nbq-typescript-package
+          path: package-artifacts/
+
+      - name: Publish with npm Trusted Publishing
+        run: npm publish package-artifacts/*.tgz --access public
