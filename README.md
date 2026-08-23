@@ -11,7 +11,7 @@ algorithm, prompts, and infrastructure remain private.
 | Language | Package | Status |
 |---|---|---|
 | Python | [`nbq`](./python) | Beta |
-| TypeScript | `@zelinqa/nbq` | Planned |
+| TypeScript | [`@zelinqa/nbq`](#typescript-quick-start) | Beta |
 
 ## Python quick start
 
@@ -36,10 +36,52 @@ with NBQClient(api_key="nbq_live_...") as client:
 
 See the [Python SDK documentation](./python/README.md) for the full usage guide.
 
+## TypeScript quick start
+
+The TypeScript SDK supports maintained Node.js LTS releases (Node.js 22 or newer) and ships
+both ESM and CommonJS builds.
+
+```bash
+pnpm add @zelinqa/nbq
+```
+
+```typescript
+import { NBQClient } from "@zelinqa/nbq";
+
+const client = new NBQClient({
+  apiKey: process.env.NBQ_API_KEY!,
+});
+
+const result = await client.nextQuestion({
+  sessionId: "conversation-123",
+  conversationHistory: [
+    { role: "user", content: "We receive about 200 leads per month." },
+  ],
+});
+
+if (result.nextQuestion) {
+  console.log(result.nextQuestion.text);
+}
+```
+
+The client validates the public API limits before sending, creates idempotency keys, retries
+temporary failures, respects `Retry-After`, and exposes typed API errors. You can configure
+`baseUrl`, `timeoutMs`, `maxRetries`, and a custom Fetch implementation in the constructor.
+
+Report the final business outcome using the same conversation identifier:
+
+```typescript
+await client.reportConversion({
+  sessionId: "conversation-123",
+  outcome: "lead",
+  metadata: { source: "website" },
+});
+```
+
 ## Security
 
-Never expose an NBQ runtime API key in browser or mobile code. Call NBQ from a trusted
-backend and report vulnerabilities according to [SECURITY.md](./SECURITY.md).
+Never expose an NBQ runtime API key in browser or mobile code. Both SDKs are intended for
+trusted backend environments. Report vulnerabilities according to [SECURITY.md](./SECURITY.md).
 
 ## License
 

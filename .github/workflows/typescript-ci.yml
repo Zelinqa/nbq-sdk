@@ -1,0 +1,56 @@
+name: TypeScript SDK CI
+
+on:
+  pull_request:
+    paths:
+      - 'typescript/**'
+      - 'scripts/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'biome.json'
+      - '.changeset/**'
+      - '.github/workflows/typescript-ci.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'typescript/**'
+      - 'scripts/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'biome.json'
+      - '.changeset/**'
+      - '.github/workflows/typescript-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ['22', '24']
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint, type check, test, and verify versions
+        run: pnpm check
+
+      - name: Build ESM, CommonJS, and type declarations
+        run: pnpm build
+
+      - name: Build the npm tarball
+        run: pnpm pack --pack-destination package-artifacts
