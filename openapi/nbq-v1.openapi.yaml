@@ -1,0 +1,3431 @@
+openapi: 3.1.0
+info:
+  title: NBQ Engine — API V1
+  version: 1.0.0
+  summary: Contrat public du runtime NBQ et de la configuration des banques de questions.
+  description: |
+    Contrat public de NBQ Engine V1, servi sur `https://api.zelinqa.ai`.
+
+    Ce document est la **source de vérité** pour `nbq-sdk` (Python et TypeScript) et
+    pour `nbq-mcp`. Les SDK et le serveur MCP sont générés ou alignés depuis ce
+    contrat, jamais l'inverse.
+
+    ## Pourquoi V1 succède à 0.9
+
+    La version publique déployée aujourd'hui est la bêta `0.9`, déjà servie sous le
+    préfixe `/v1`. La V1 **ajoute** ses routes sous le même préfixe sans en modifier
+    aucune : `POST /v1/next-questions` et `POST /v1/sessions/{session_id}/conversion`
+    restent fonctionnelles et sont marquées dépréciées. La correspondance complète
+    est décrite dans `docs/api-compat-0.9-to-v1.md`.
+
+    ## Principes contractuels
+
+    - **Le tenant n'est jamais fourni par le client.** L'authorizer de l'API Gateway
+      publique résout la clé, puis injecte le tenant, le NBQ et les scopes. Tout
+      header `x-tenant-id`, `x-nbq-id` ou `x-scopes` présent dans la requête entrante
+      est écrasé.
+    - **Toute mutation exige `Idempotency-Key`.** Même clé et même corps renvoient la
+      réponse d'origine ; même clé et corps différent produisent
+      `idempotency_key_reused`.
+    - **Toute mutation d'une session existante exige `state_version`**, en contrôle
+      optimiste.
+    - **Les identifiants du tour précédent sont optionnels.** `decision_id`,
+      `question_id` et `outcome` aident NBQ ; leur absence n'est pas une erreur, le
+      moteur les résout depuis la décision en attente et les messages observés. Une
+      valeur explicite du client reste prioritaire sur l'inférence.
+    - **Le verbatim est optionnel.** `user_text` peut être omis quand une réponse
+      structurée ou des mises à jour client suffisent : l'extraction sémantique est
+      alors dégradée, signalée par `degraded_reasons`, mais le moteur reste
+      fonctionnel.
+    - **Aucun interne n'est exposé.** Ni score de sélection, ni preuve sémantique
+      détaillée, ni embedding, ni prompt, ni prototype de réponse, ni matrice
+      compilée n'apparaissent dans une réponse publique.
+    - **Le client ne choisit pas la version de configuration.** La session épingle
+      en interne la version publiée active au moment de sa création.
+
+    ## Arrêts souples
+
+    NBQ ne décide pas à la place de l'appelant. Lorsque `max_turns` est atteint, que
+    l'objectif est déjà atteint ou que l'éligibilité normale est vide, `/next`
+    renvoie **encore la meilleure question disponible** et signale la situation dans
+    `warnings`. Un `action: stop` n'est produit que lorsqu'aucune question
+    identifiable n'existe réellement. Les exclusions dures — question inactive,
+    sous-objectif exclu par le client, contrainte stricte de l'appel — ne sont jamais
+    violées, et toute question retournée porte un `question_id` valide.
+
+    ## Scopes de clé API
+
+    Une clé porte un ou plusieurs scopes. Studio recommande des clés séparées pour
+    le runtime et pour la gestion, selon le principe du moindre privilège.
+
+    | Scope | Autorise |
+    |---|---|
+    | `runtime` | les cinq routes de session |
+    | `configuration:read` | `GET /v1/configuration` (publiée) et `GET /v1/configuration/questions` |
+    | `configuration:write` | `POST /v1/configuration/changes` et la lecture du brouillon |
+
+    Deux niveaux de contrôle se complètent. L'authorizer décide **statiquement**,
+    à partir de la méthode et du chemin : c'est lui qui refuse une clé `runtime`
+    sur `/v1/configuration/publish`. Le service ajoute un contrôle **dynamique**
+    là où le scope dépend du contenu de la requête, que l'authorizer ne voit pas :
+    aujourd'hui le seul cas est `?state=draft`, qui exige `configuration:write`
+    sur une route dont l'authorizer n'exige que `configuration:read`.
+    | `configuration:publish` | `POST /v1/configuration/publish` |
+
+    Chaque opération déclare le scope exigé dans `x-required-scopes`. Un scope
+    manquant produit `403 insufficient_scope`.
+
+    ## Frontière de confiance
+
+    L'API Configuration est implémentée par le service `bo-api` mais atteignable par
+    deux portes qui n'ont pas la même confiance :
+
+    - via l'**API Gateway publique** (`6nw77hkcib`, `api.zelinqa.ai`), l'authorizer
+      Lambda authentifie la clé et **écrase** `x-tenant-id` et `x-scopes` ; ces
+      headers font alors autorité ;
+    - via l'**API Gateway bo-api** (`jdkpi8qlv5`, `bo-api.zelinqa.ai`), l'authentification
+      vient des guards NestJS et du JWT Cognito ; **tous** les headers `x-tenant-id`
+      et `x-scopes` fournis par l'appelant sont ignorés.
+
+    Le service distingue obligatoirement l'origine via `requestContext.apiId` avant
+    de construire son contexte d'autorisation. Un JWT valide sur la porte bo-api ne
+    peut jamais obtenir un scope de publication en forgeant un header `x-*`.
+    Ce document ne décrit que la surface publique `api.zelinqa.ai`.
+  contact:
+    name: Zelinqa
+    url: https://docs.zelinqa.ai
+  license:
+    name: Proprietary — Zelinqa SAS
+    identifier: LicenseRef-Zelinqa-Proprietary
+  x-contract-status: frozen
+  x-jira: NBQ-304
+  x-supersedes: openapi/nbq-runtime-v2.openapi.yaml
+  x-compatibility-note: docs/api-compat-0.9-to-v1.md
+
+servers:
+  - url: https://api.zelinqa.ai
+    description: API publique NBQ
+
+tags:
+  - name: sessions
+    description: |
+      Cycle de vie d'une conversation NBQ : création, sélection de la question
+      suivante, mises à jour hors tour, reprise et retour de résultat.
+  - name: configuration
+    description: |
+      Lecture et modification de la configuration éditoriale d'un NBQ, puis
+      publication asynchrone de l'artefact moteur.
+
+security:
+  - ApiKeyAuth: []
+
+paths:
+  /v1/sessions:
+    post:
+      tags: [sessions]
+      summary: Créer une session
+      description: |
+        Crée une session et l'épingle en interne sur la version de configuration
+        publiée au moment de l'appel. La création **ne renvoie pas encore de
+        candidats** : appeler `POST /v1/sessions/{session_id}/next` ensuite.
+
+        `initial_history` sert uniquement à reprendre une conversation commencée
+        ailleurs — migration d'un intégrateur 0.9, ou échanges antérieurs à
+        l'activation de NBQ. Il est consommé **une seule fois** en mémoire pour
+        construire l'état initial, puis n'est persisté ni dans l'état, ni dans le
+        journal, ni dans les logs applicatifs, et n'est jamais renvoyé. Si le
+        tracing LLM est activé par Zelinqa, le prompt peut apparaître dans
+        LangSmith EU selon la politique de diagnostic et de rétention V1.
+      operationId: createSession
+      x-required-scopes: [runtime]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SessionCreateRequest'
+            examples:
+              minimal:
+                summary: Création nominale
+                value: {}
+              avec_reference_client:
+                summary: Corrélation avec un identifiant de l'intégrateur
+                value:
+                  client_reference: crm-lead-8842
+                  max_turns: 10
+              reprise_conversation:
+                summary: Conversation déjà commencée hors NBQ
+                value:
+                  client_reference: crm-lead-8843
+                  initial_history:
+                    - role: assistant
+                      message_id: msg_1
+                      text: Bonjour, que recherchez-vous ?
+                    - role: user
+                      message_id: msg_2
+                      text: Un canapé pour mon salon, plutôt contemporain.
+      responses:
+        '201':
+          description: Session créée.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionStateResponse'
+              examples:
+                session_neuve:
+                  $ref: '#/components/examples/SessionNeuve'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/InsufficientScope'
+        '409':
+          $ref: '#/components/responses/IdempotencyConflict'
+        '410':
+          $ref: '#/components/responses/CompiledArtifactUnavailable'
+        '422':
+          $ref: '#/components/responses/InvalidChoice'
+        '503':
+          $ref: '#/components/responses/IdempotencyContention'
+
+  /v1/sessions/{session_id}/next:
+    post:
+      tags: [sessions]
+      summary: Comprendre le tour précédent et proposer les questions suivantes
+      description: |
+        Route principale du runtime. En un seul appel, le moteur résout la question
+        réellement posée et son outcome, applique les mises à jour du client, réduit
+        l'état, recalcule les progressions, puis classe les questions éligibles.
+
+        Le client n'a pas à savoir quelle candidate son agent a utilisée : si
+        `decision_id`, `question_id` ou `outcome` sont absents, NBQ les résout depuis
+        la décision en attente, le texte de l'agent, la réponse structurée et le
+        contexte. Une reformulation de la question par l'agent hôte reste
+        rattachable.
+
+        Au premier appel d'une session neuve, `previous_turn` est absent.
+      operationId: nextQuestions
+      x-required-scopes: [runtime]
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NextRequest'
+            examples:
+              premier_tour:
+                summary: Premier appel, aucune question encore posée
+                value:
+                  state_version: 0
+              tour_avec_reponse_libre:
+                summary: L'agent a reformulé la question ; aucun identifiant fourni
+                value:
+                  state_version: 3
+                  previous_turn:
+                    assistant_text: Et côté budget, vous vous situez plutôt dans quelle fourchette ?
+                    user_text: Autour de 2 000 euros, je ne veux pas dépasser 2 500.
+                    message_id: msg_18
+              tour_avec_reponse_structuree:
+                summary: Réponse à choix, mapping déterministe sans appel LLM
+                value:
+                  state_version: 4
+                  previous_turn:
+                    decision_id: dec_7f2a
+                    question_id: q_style
+                    outcome: asked_answered
+                    structured_answer:
+                      choice_ids: [choice_contemporain]
+              rattrapage_de_contexte:
+                summary: Messages échangés sans passer par NBQ, plus une donnée connue du client
+                value:
+                  state_version: 5
+                  context_update:
+                    mode: messages
+                    messages:
+                      - role: user
+                        message_id: msg_21
+                        text: En fait nous avons deux chats qui montent sur le canapé.
+                  client_updates:
+                    data:
+                      - id: has_pets
+                        value: true
+              selection_contrainte:
+                summary: L'agent veut deux questions fermées dans un sous-objectif précis
+                value:
+                  state_version: 6
+                  selection:
+                    candidate_count: 2
+                    allowed_question_types: [single_choice, multiple_choice]
+                    sub_objectives:
+                      ids: [so_besoin]
+                      mode: restrict
+      responses:
+        '200':
+          description: Décision calculée, ou arrêt explicite si aucune question n'existe.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NextResponse'
+              examples:
+                decision_normale:
+                  $ref: '#/components/examples/DecisionNormale'
+                max_turns_atteint:
+                  $ref: '#/components/examples/DecisionApresMaxTurns'
+                arret_sans_question:
+                  $ref: '#/components/examples/ArretSansQuestion'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/InsufficientScope'
+        '404':
+          $ref: '#/components/responses/UnknownSession'
+        '409':
+          $ref: '#/components/responses/SessionMutationConflict'
+        '410':
+          $ref: '#/components/responses/CompiledArtifactUnavailable'
+        '422':
+          $ref: '#/components/responses/NextUnprocessable'
+        '503':
+          $ref: '#/components/responses/IdempotencyContention'
+
+  /v1/sessions/{session_id}/events:
+    post:
+      tags: [sessions]
+      summary: Appliquer un contexte ou une mise à jour sans sélectionner de question
+      description: |
+        Même réducteur que `/next`, sans la phase de sélection. Sert à rattraper des
+        messages qui n'ont pas transité par NBQ, synchroniser une donnée déjà connue
+        du système appelant, corriger une valeur, ou piloter un sous-objectif.
+
+        La décision en attente reste en attente, sauf si le contexte fourni permet
+        de la résoudre sans ambiguïté.
+      operationId: applySessionEvents
+      x-required-scopes: [runtime]
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SessionEventsRequest'
+            examples:
+              donnee_connue_du_client:
+                summary: Le CRM connaît déjà la donnée, inutile de poser la question
+                value:
+                  state_version: 2
+                  client_updates:
+                    data:
+                      - id: company_size
+                        value: 120
+              sous_objectif_exclu:
+                summary: L'intégrateur retire une étape du parcours
+                value:
+                  state_version: 2
+                  client_updates:
+                    sub_objectives:
+                      - id: so_livraison
+                        operation: exclude
+              resume_intermediaire:
+                summary: Échanges hors NBQ résumés par l'agent hôte
+                value:
+                  state_version: 3
+                  context_update:
+                    mode: summary
+                    text: Le visiteur a précisé qu'il emménage en mars et qu'il mesure la pièce ce week-end.
+      responses:
+        '200':
+          description: État public après application des mises à jour.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionStateResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/InsufficientScope'
+        '404':
+          $ref: '#/components/responses/UnknownSession'
+        '409':
+          $ref: '#/components/responses/SessionMutationConflict'
+        '410':
+          $ref: '#/components/responses/CompiledArtifactUnavailable'
+        '422':
+          $ref: '#/components/responses/InvalidChoice'
+        '503':
+          $ref: '#/components/responses/IdempotencyContention'
+
+  /v1/sessions/{session_id}:
+    get:
+      tags: [sessions]
+      summary: Lire l'état public d'une session
+      description: |
+        Renvoie l'état de reprise complet : en-tête, résultats des questions, cibles
+        touchées, progressions et contrôles client, décision en attente avec tous
+        ses candidats réhydratés.
+
+        Cette route rend inutile tout jeton de reprise côté client : après un crash,
+        relire la session suffit pour retrouver `state_version` et les candidats
+        exacts de la décision en attente.
+
+        Ne renvoie jamais les embeddings, références de stockage internes, prompts,
+        traces LLM ni preuves sémantiques détaillées.
+      operationId: getSession
+      x-required-scopes: [runtime]
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      responses:
+        '200':
+          description: État public courant.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionStateResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/InsufficientScope'
+        '404':
+          $ref: '#/components/responses/UnknownSession'
+        '410':
+          $ref: '#/components/responses/CompiledArtifactUnavailable'
+
+  /v1/sessions/{session_id}/feedback:
+    post:
+      tags: [sessions]
+      summary: Déclarer le résultat réel de la conversation
+      description: |
+        Enregistre ce que la conversation a produit, sans modifier rétroactivement
+        le scoring ni l'état de la session.
+
+        Le vocabulaire est volontairement générique : NBQ ne suppose pas qu'une
+        conversation est toujours une qualification commerciale. `label` permet à
+        l'intégrateur de nommer son propre résultat métier — « achat »,
+        « rendez-vous », « dossier complété ».
+
+        Cette route remplace `POST /v1/sessions/{session_id}/conversion` de la
+        bêta 0.9.
+      operationId: submitSessionFeedback
+      x-required-scopes: [runtime]
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FeedbackRequest'
+            examples:
+              succes:
+                summary: Résultat positif nommé par l'intégrateur
+                value:
+                  result: success
+                  label: achat
+                  metadata:
+                    order_id: SO-99120
+              echec:
+                summary: Conversation abandonnée
+                value:
+                  result: failure
+                  label: abandon_panier
+      responses:
+        '202':
+          description: Retour enregistré.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FeedbackResponse'
+              example:
+                request_id: req_5f31
+                session_id: ses_01J8Z
+                feedback_id: fbk_02K1
+                recorded_at: '2026-09-01T09:14:22Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/InsufficientScope'
+        '404':
+          $ref: '#/components/responses/UnknownSession'
+        '409':
+          $ref: '#/components/responses/IdempotencyConflict'
+        '503':
+          $ref: '#/components/responses/IdempotencyContention'
+
+  /v1/configuration:
+    get:
+      tags: [configuration]
+      summary: Lire la configuration éditoriale
+      description: |
+        Renvoie les quatre objets configurés dans NBQ Studio : objectif,
+        sous-objectifs, informations de réussite et questions.
+
+        `state=published` (défaut) renvoie la configuration active et exige
+        `configuration:read`. `state=draft` renvoie le brouillon en cours d'édition
+        et exige `configuration:write`.
+
+        Cette route n'expose jamais les internes de compilation : ni prototypes de
+        réponse, ni graphe `R`, ni matrices `R_k` ou `G`, ni artefact.
+      operationId: getConfiguration
+      x-required-scopes: [configuration:read]
+      parameters:
+        - name: state
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [published, draft]
+            default: published
+          description: |
+            `published` exige `configuration:read`. `draft` exige
+            `configuration:write` : lire un brouillon revient à voir du travail
+            non publié, ce qui relève de l'édition plutôt que de la consultation.
+
+            **Ce contrôle est dynamique, appliqué par le service, pas par
+            l'authorizer.** L'authorizer de la passerelle décide à partir de la
+            méthode et du chemin ; il ne voit pas les paramètres de requête et ne
+            peut donc pas distinguer `?state=draft` de `?state=published`. Il
+            n'exige ici que `configuration:read`, et le service refuse ensuite
+            avec `403 insufficient_scope` si `state=draft` est demandé sans
+            `configuration:write`.
+      responses:
+        '200':
+          description: Configuration demandée.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfigurationResponse'
+              examples:
+                publiee:
+                  $ref: '#/components/examples/ConfigurationPubliee'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/InsufficientScope'
+        '404':
+          $ref: '#/components/responses/UnknownConfiguration'
+
+  /v1/configuration/questions:
+    get:
+      tags: [configuration]
+      summary: Lister les questions
+      description: |
+        Liste paginée et filtrable du corpus. `format=csv` renvoie le même jeu de
+        données en `text/csv`, colonnes stables et documentées, pour export vers un
+        tableur ou réimport.
+
+        La pagination est par curseur opaque : passer `cursor` reçu dans
+        `next_cursor` pour obtenir la page suivante. `next_cursor` vaut `null` sur
+        la dernière page.
+      operationId: listConfigurationQuestions
+      x-required-scopes: [configuration:read]
+      parameters:
+        - name: state
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [published, draft]
+            default: published
+          description: |
+            `draft` exige `configuration:write`, contrôlé par le service et non
+            par l'authorizer, qui ne voit pas les paramètres de requête.
+        - name: sub_objective_id
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+        - name: active
+          in: query
+          required: false
+          schema:
+            type: boolean
+          description: Filtre sur le drapeau d'activation.
+        - name: type
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/QuestionType'
+        - name: search
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 200
+          description: Recherche textuelle simple sur le libellé de la question.
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 512
+          description: Curseur opaque renvoyé par l'appel précédent.
+        - name: format
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [json, csv]
+            default: json
+          description: |
+            `csv` ignore la pagination par curseur et renvoie l'intégralité du
+            corpus filtré en `text/csv`.
+      responses:
+        '200':
+          description: Page de questions, ou export complet en CSV.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuestionListResponse'
+              examples:
+                premiere_page:
+                  $ref: '#/components/examples/PageDeQuestions'
+            text/csv:
+              schema:
+                type: string
+              example: |
+                id,text,type,choices,sub_objective_id,active
+                q_style,"Quel style de canapé recherchez-vous ?",single_choice,"choice_contemporain|choice_scandinave|choice_classique",so_besoin,true
+                q_budget,"Quel budget souhaitez-vous consacrer au canapé ?",open,,so_budget,true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/InsufficientScope'
+        '404':
+          $ref: '#/components/responses/UnknownConfiguration'
+
+  /v1/configuration/audit:
+    get:
+      tags: [configuration]
+      summary: Consulter le journal des changements
+      description: |
+        Renvoie les actions de configuration du NBQ, de la plus récente à la
+        plus ancienne. Cette lecture est réservée au scope
+        `configuration:publish` : le journal contient l'identité des opérateurs
+        et n'est pas une simple lecture du corpus.
+
+        Les différences sont volontairement structurelles. Elles indiquent la
+        ressource et les champs modifiés, mais ne recopient jamais le texte des
+        questions, les libellés, les prompts, les réponses d'un utilisateur ni
+        une clé API en clair. L'identifiant d'une clé actrice est son empreinte
+        SHA-256 déjà stockée par l'authorizer.
+
+        La pagination utilise un curseur opaque. Le journal des événements de
+        session est séparé et n'est jamais renvoyé par cette route.
+      operationId: listConfigurationAudit
+      x-required-scopes: [configuration:publish]
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 512
+          description: Curseur opaque renvoyé par la page précédente.
+        - name: action
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 160
+        - name: resource_type
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/ConfigurationAuditResourceType'
+      responses:
+        '200':
+          description: Page du journal d'audit.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfigurationAuditPage'
+              example:
+                request_id: req_8aa1
+                events:
+                  - id: 109a34df-1b50-4ac3-9045-01934a2fe3d8
+                    occurred_at: '2026-09-02T12:44:10Z'
+                    action: configuration.question.deactivated
+                    origin: studio_jwt
+                    actor:
+                      type: cognito_user
+                      id: 714c7cd0-1096-47e4-9f6b-e73d907f281f
+                    scopes: [configuration:read, configuration:write, configuration:publish]
+                    request_id: req_71aa
+                    resource:
+                      type: question
+                      id: q_style
+                    diff:
+                      before: { active: true }
+                      after: { active: false }
+                    details:
+                      config_version_id: 8e9f2cf0-f25d-4900-a066-e87fe6424d0b
+                      draft_revision: 43
+                next_cursor: null
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/InsufficientScope'
+        '404':
+          $ref: '#/components/responses/UnknownConfiguration'
+        '422':
+          $ref: '#/components/responses/ConfigurationValidationFailed'
+
+  /v1/configuration/changes:
+    post:
+      tags: [configuration]
+      summary: Appliquer des changements au brouillon
+      description: |
+        Applique **atomiquement** une liste ordonnée d'opérations au brouillon :
+        soit toutes réussissent, soit aucune n'est écrite. Les identifiants fournis
+        par l'appelant sont conservés ; ils restent stables entre les publications.
+
+        Cette route ne publie rien. Le brouillon devient actif uniquement après
+        `POST /v1/configuration/publish` et la fin de la compilation.
+
+        Les erreurs de validation sont renvoyées groupées dans
+        `configuration_validation_failed`, avec la position de chaque opération
+        fautive, afin que Studio puisse toutes les afficher d'un coup.
+      operationId: applyConfigurationChanges
+      x-required-scopes: [configuration:write]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfigurationChangesRequest'
+            examples:
+              ajout_question_et_information:
+                summary: Ajouter une question puis l'information de réussite qu'elle collecte
+                value:
+                  changes:
+                    - entity: question
+                      operation: create
+                      question:
+                        id: q_delivery_window
+                        text: À quelle période souhaitez-vous être livré ?
+                        type: single_choice
+                        sub_objective_id: so_livraison
+                        active: true
+                        choices:
+                          - id: choice_1m
+                            label: Dans le mois
+                          - id: choice_3m
+                            label: Dans les trois mois
+                          - id: choice_later
+                            label: Plus tard
+                    - entity: success_information
+                      operation: create
+                      success_information:
+                        id: delivery_window
+                        label: Fenêtre de livraison souhaitée
+                        primary_question_id: q_delivery_window
+                        schema:
+                          type: string
+                          enum: [dans_le_mois, trois_mois, plus_tard]
+              desactivation:
+                summary: Retirer une question du corpus actif sans la supprimer
+                value:
+                  changes:
+                    - entity: question
+                      operation: update
+                      question:
+                        id: q_style
+                        active: false
+              reglage_objectif:
+                summary: Passer le niveau de qualification en approfondi
+                value:
+                  changes:
+                    - entity: objective
+                      operation: update
+                      objective:
+                        qualification_level: deep
+                        max_turns: 12
+      responses:
+        '200':
+          description: Brouillon mis à jour.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfigurationChangesResponse'
+              example:
+                request_id: req_71aa
+                draft_revision: 42
+                applied: 2
+                warnings: []
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/InsufficientScope'
+        '409':
+          $ref: '#/components/responses/IdempotencyConflict'
+        '422':
+          $ref: '#/components/responses/ConfigurationValidationFailed'
+        '503':
+          $ref: '#/components/responses/IdempotencyContention'
+
+  /v1/configuration/publish:
+    post:
+      tags: [configuration]
+      summary: Publier le brouillon
+      description: |
+        Valide le brouillon, crée un job de compilation et retourne immédiatement
+        `202 Accepted`. La compilation ne s'exécute **jamais** dans la requête HTTP :
+        un corpus important demande plusieurs lots LLM, bien au-delà de la limite de
+        la passerelle.
+
+        Le brouillon ne devient la configuration active qu'à la fin de la
+        compilation. Une ancienne version compilée reste lisible pour terminer les
+        sessions qui l'utilisent déjà.
+
+        Un second publish du même NBQ alors qu'un job est `queued` ou `running`
+        retourne `409 compilation_in_progress` avec le `compilation_id` en cours.
+
+        Suivre l'avancement avec
+        `GET /v1/configuration/compilations/{compilation_id}`.
+      operationId: publishConfiguration
+      x-required-scopes: [configuration:publish]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PublishRequest'
+            examples:
+              publication_simple:
+                summary: Publier la révision courante du brouillon
+                value: {}
+              publication_verrouillee:
+                summary: Refuser de publier si le brouillon a bougé depuis la dernière lecture
+                value:
+                  expected_draft_revision: 42
+      responses:
+        '202':
+          description: Job de compilation créé.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompilationStatus'
+              example:
+                request_id: req_82bd
+                compilation_id: cmp_01K2QF
+                status: queued
+                draft_revision: 42
+                created_at: '2026-09-01T09:20:11Z'
+                updated_at: '2026-09-01T09:20:11Z'
+                progress: 0
+                error: null
+                configuration_version: null
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/InsufficientScope'
+        '409':
+          $ref: '#/components/responses/PublishConflict'
+        '422':
+          $ref: '#/components/responses/ConfigurationValidationFailed'
+        '503':
+          $ref: '#/components/responses/IdempotencyContention'
+
+  /v1/configuration/compilations/{compilation_id}:
+    get:
+      tags: [configuration]
+      summary: Suivre un job de compilation
+      description: |
+        Renvoie l'avancement du job : `queued`, `running`, `succeeded` ou `failed`.
+
+        En `succeeded`, `configuration_version` porte la version désormais active.
+        En `failed`, `error` contient une cause bornée et un message lisible : ni
+        trace interne, ni prompt, ni contenu de lot n'est exposé.
+      operationId: getCompilation
+      x-required-scopes: [configuration:read]
+      parameters:
+        - name: compilation_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+      responses:
+        '200':
+          description: Statut du job.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompilationStatus'
+              examples:
+                en_cours:
+                  summary: Compilation en cours
+                  value:
+                    request_id: req_8300
+                    compilation_id: cmp_01K2QF
+                    status: running
+                    draft_revision: 42
+                    created_at: '2026-09-01T09:20:11Z'
+                    updated_at: '2026-09-01T09:21:04Z'
+                    progress: 0.45
+                    error: null
+                    configuration_version: null
+                terminee:
+                  summary: Compilation terminée, nouvelle version active
+                  value:
+                    request_id: req_8311
+                    compilation_id: cmp_01K2QF
+                    status: succeeded
+                    draft_revision: 42
+                    created_at: '2026-09-01T09:20:11Z'
+                    updated_at: '2026-09-01T09:23:47Z'
+                    progress: 1
+                    error: null
+                    configuration_version: cfg_00014
+                echouee:
+                  summary: Compilation échouée, cause bornée
+                  value:
+                    request_id: req_8322
+                    compilation_id: cmp_01K2QG
+                    status: failed
+                    draft_revision: 43
+                    created_at: '2026-09-01T10:02:00Z'
+                    updated_at: '2026-09-01T10:07:31Z'
+                    progress: 0.62
+                    error:
+                      code: llm_unavailable
+                      message: Le service de compilation sémantique est temporairement indisponible.
+                    configuration_version: null
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/InsufficientScope'
+        '404':
+          $ref: '#/components/responses/UnknownCompilation'
+
+  /v1/next-questions:
+    post:
+      tags: [legacy]
+      deprecated: true
+      summary: '[Déprécié 0.9] Calculer la question suivante sans session serveur'
+      description: |
+        **Route de la bêta 0.9, conservée pour ne pas casser les intégrations
+        existantes.** Elle reste servie à l'identique et n'évolue plus.
+
+        Différence structurante avec la V1 : ici le client fournit lui-même
+        `session_id` et renvoie l'historique à chaque appel ; le moteur ne conserve
+        aucun état. En V1, NBQ alloue la session via `POST /v1/sessions` et maintient
+        l'état canonique côté serveur.
+
+        Remplacée par `POST /v1/sessions/{session_id}/next`. Correspondance champ à
+        champ dans `docs/api-compat-0.9-to-v1.md`.
+
+        Une date de retrait sera annoncée ultérieurement par un en-tête `Sunset` sur
+        cette route ; elle n'est pas fixée dans ce contrat.
+      operationId: nextQuestionsLegacy
+      x-required-scopes: [runtime]
+      x-deprecated-since: '1.0.0'
+      x-replaced-by: nextQuestions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LegacyNextQuestionsRequest'
+      responses:
+        '200':
+          description: Question suivante, ou `null` si le corpus est épuisé.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LegacyNextQuestionsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/InsufficientScope'
+
+  /v1/sessions/{session_id}/conversion:
+    post:
+      tags: [legacy]
+      deprecated: true
+      summary: '[Déprécié 0.9] Déclarer le résultat d''une conversation'
+      description: |
+        **Route de la bêta 0.9.** Remplacée par
+        `POST /v1/sessions/{session_id}/feedback`, dont le vocabulaire est générique
+        et ne suppose pas un contexte commercial.
+
+        Correspondance : `purchase` et `lead` → `result: success` avec le `label`
+        d'origine ; `abandon` → `result: failure` ; `other` → `result: partial`.
+      operationId: conversionLegacy
+      x-required-scopes: [runtime]
+      x-deprecated-since: '1.0.0'
+      x-replaced-by: submitSessionFeedback
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+            minLength: 8
+            maxLength: 128
+          description: Optionnelle en 0.9 ; obligatoire sur toutes les mutations V1.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LegacyConversionRequest'
+      responses:
+        '202':
+          description: Conversion enregistrée.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LegacyConversionResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/InsufficientScope'
+
+  /v1/health:
+    get:
+      tags: [legacy]
+      summary: Sonde de disponibilité
+      description: |
+        Route publique sans authentification, conservée depuis la bêta 0.9. Ne
+        renvoie aucune donnée de tenant.
+      operationId: health
+      security: []
+      responses:
+        '200':
+          description: Service disponible.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: string
+              example:
+                status: ok
+                nbq_version: 1.0.0
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: NBQ API key
+      description: |
+        Clé d'intégration préfixée `nbq_live_`, envoyée dans
+        `Authorization: Bearer nbq_live_…` et résolue par l'authorizer Lambda de
+        l'API Gateway publique. L'authorizer valide la clé, puis **injecte** en amont
+        du service les headers de contexte `x-tenant-id`, `x-nbq-id` et `x-scopes` —
+        `x-scopes` étant la liste des scopes de la clé séparés par des **virgules**,
+        par exemple `runtime,configuration:read`.
+
+        Ces headers ne sont jamais acceptés depuis le client : toute valeur entrante
+        est écrasée. Une clé absente ou invalide produit `401` au niveau de la
+        passerelle ; une clé valide sans le scope requis produit `403` avec le code
+        `insufficient_scope`.
+
+  parameters:
+    SessionId:
+      name: session_id
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+      description: Identifiant opaque de session attribué par NBQ à la création.
+
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 128
+      description: |
+        Clé unique par mutation logique, choisie par l'appelant.
+
+        Même clé et même corps renvoient exactement la réponse d'origine, sans
+        rejouer l'effet : aucun retry ne double `turn_count`, un outcome, un
+        événement, un feedback ou une publication. Même clé avec un corps différent
+        produit `409 idempotency_key_reused`.
+
+        Les enregistrements sont isolés par tenant et par opération, et sont purgés
+        après **24 heures**. Passé ce délai, la même clé est traitée comme neuve.
+
+  schemas:
+
+    # ---------------------------------------------------------------- Sessions
+
+    SessionCreateRequest:
+      type: object
+      additionalProperties: false
+      description: |
+        Le client ne choisit ni la version de configuration, ni une politique
+        d'accusé de réception : la session épingle en interne la version publiée
+        active au moment de sa création.
+      properties:
+        client_reference:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Référence opaque de l'intégrateur, renvoyée telle quelle pour corrélation.
+        max_turns:
+          type: integer
+          minimum: 1
+          maximum: 100
+          description: |
+            Surcharge la limite souple définie dans la configuration. Atteindre cette
+            limite ne coupe pas la conversation : `/next` continue de proposer la
+            meilleure question avec un avertissement.
+        initial_history:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/InitialHistoryItem'
+          description: |
+            Historique de reprise, consommé une seule fois en mémoire pour construire
+            l'état initial. Jamais persisté, jamais renvoyé.
+
+    InitialHistoryItem:
+      type: object
+      additionalProperties: false
+      required: [role]
+      properties:
+        role:
+          type: string
+          enum: [user, assistant]
+        message_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Référence conservée même lorsque le verbatim n'est pas persisté.
+        question_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Renseigné seulement si ce message correspond à une question connue du corpus.
+        text:
+          type: string
+          minLength: 1
+          maxLength: 8000
+        structured_answer:
+          $ref: '#/components/schemas/StructuredAnswer'
+        occurred_at:
+          type: string
+          format: date-time
+      anyOf:
+        - required: [text]
+        - required: [structured_answer]
+
+    NextRequest:
+      type: object
+      additionalProperties: false
+      required: [state_version]
+      properties:
+        state_version:
+          type: integer
+          minimum: 0
+          description: Version lue par le client avant cette mutation, en contrôle optimiste.
+        previous_turn:
+          $ref: '#/components/schemas/PreviousTurn'
+        context_update:
+          $ref: '#/components/schemas/ContextUpdate'
+        client_updates:
+          $ref: '#/components/schemas/ClientUpdates'
+        selection:
+          $ref: '#/components/schemas/SelectionOptions'
+
+    PreviousTurn:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      description: |
+        Observation du dernier échange. Absent au premier appel d'une session neuve.
+
+        `decision_id`, `question_id` et `outcome` sont des **aides optionnelles**,
+        jamais des identifiants que le client devrait fabriquer. Lorsqu'ils manquent,
+        NBQ résout la candidate utilisée depuis la décision en attente,
+        `assistant_text`, la réponse structurée et le contexte — ce qui permet à
+        l'agent hôte de reformuler librement les questions. Une valeur explicite du
+        client reste prioritaire sur l'inférence et est validée.
+      properties:
+        decision_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        question_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        outcome:
+          $ref: '#/components/schemas/QuestionOutcome'
+        assistant_text:
+          type: string
+          minLength: 1
+          maxLength: 8000
+          description: Question ou message réellement envoyé par l'agent hôte, éventuellement reformulé.
+        user_text:
+          type: string
+          minLength: 1
+          maxLength: 8000
+          description: |
+            Verbatim optionnel. Peut être omis lorsque `structured_answer` ou
+            `client_updates` suffisent : l'extraction sémantique devient dégradée,
+            signalée par `degraded_reasons`, mais le moteur reste fonctionnel.
+        structured_answer:
+          $ref: '#/components/schemas/StructuredAnswer'
+        message_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+
+    ContextUpdate:
+      oneOf:
+        - $ref: '#/components/schemas/ConversationSummary'
+        - $ref: '#/components/schemas/ConversationMessageDelta'
+      discriminator:
+        propertyName: mode
+        mapping:
+          summary: '#/components/schemas/ConversationSummary'
+          messages: '#/components/schemas/ConversationMessageDelta'
+      description: |
+        Contexte apparu depuis le dernier appel NBQ. Le client choisit un résumé
+        compact ou le delta ordonné des messages ; il ne renvoie jamais l'historique
+        déjà traité.
+
+    ConversationSummary:
+      type: object
+      additionalProperties: false
+      required: [mode, text]
+      properties:
+        mode:
+          type: string
+          const: summary
+        text:
+          type: string
+          minLength: 1
+          maxLength: 16000
+
+    ConversationMessageDelta:
+      type: object
+      additionalProperties: false
+      required: [mode, messages]
+      properties:
+        mode:
+          type: string
+          const: messages
+        messages:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/ConversationMessage'
+          description: Messages nouveaux, dans l'ordre conversationnel.
+
+    ConversationMessage:
+      type: object
+      additionalProperties: false
+      required: [role]
+      description: |
+        Message du delta de contexte. Une `structured_answer` portée par un
+        message utilisateur est mappée déterministement, sans LLM, comme pour
+        `previous_turn` — elle exige donc `question_id` : sans lui, la requête
+        est rejetée en `invalid_previous_turn`. Un `question_id` connu du
+        corpus rend les cibles de cette question vérifiables par l'extraction,
+        même hors décision en attente.
+      properties:
+        role:
+          type: string
+          enum: [user, assistant]
+        message_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        question_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        text:
+          type: string
+          minLength: 1
+          maxLength: 8000
+        structured_answer:
+          $ref: '#/components/schemas/StructuredAnswer'
+          description: |
+            Réponse structurée rapportée dans le delta. Obligatoirement
+            accompagnée de `question_id` (le schéma ne porte pas de if/then :
+            la règle est appliquée par le runtime, code `invalid_previous_turn`).
+        occurred_at:
+          type: string
+          format: date-time
+      anyOf:
+        - required: [text]
+        - required: [structured_answer]
+
+    StructuredAnswer:
+      type: object
+      additionalProperties: false
+      required: [choice_ids]
+      description: |
+        Réponse à une question à choix. Le mapping choix vers information de réussite
+        est déterministe et compilé à la publication : aucun appel LLM n'est effectué
+        pour l'interpréter.
+      properties:
+        choice_ids:
+          type: array
+          minItems: 1
+          maxItems: 50
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 1
+            maxLength: 128
+        free_text:
+          type: string
+          minLength: 1
+          maxLength: 4000
+          description: Complément libre, autorisé uniquement pour une question `semi_open`.
+
+    QuestionOutcome:
+      type: string
+      enum: [asked_answered, asked_no_answer, refused]
+      description: |
+        Résultat d'une question effectivement posée.
+
+        - `asked_answered` : question posée et réponse exploitable reçue ;
+        - `asked_no_answer` : question posée, aucune réponse exploitable ;
+        - `refused` : refus explicite de répondre.
+
+        Une question jamais posée n'a pas de résultat : elle est simplement absente.
+        Il n'existe pas de valeur `skipped` — une proposition que l'agent n'a pas
+        utilisée est journalisée comme décision ignorée, jamais comme un faux
+        résultat sur la question.
+
+    ClientUpdates:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      description: Mises à jour explicites du système appelant, prioritaires sur l'inférence.
+      properties:
+        data:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/DataClientUpdate'
+        sub_objectives:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/SubObjectiveOverrideUpdate'
+        objective:
+          $ref: '#/components/schemas/ObjectiveOverrideUpdate'
+
+    DataClientUpdate:
+      oneOf:
+        - $ref: '#/components/schemas/SetDataUpdate'
+        - $ref: '#/components/schemas/UnsetDataUpdate'
+        - $ref: '#/components/schemas/NotApplicableDataUpdate'
+      description: |
+        Le client n'envoie jamais de statut. `set` produit une valeur confirmée avec
+        la priorité de preuve maximale ; `unset` retire la valeur courante ;
+        `not_applicable` satisfait une information de réussite sans lui donner de
+        valeur, par exemple une donnée sans objet pour ce visiteur.
+
+    SetDataUpdate:
+      type: object
+      additionalProperties: false
+      required: [id, value]
+      properties:
+        id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        operation:
+          type: string
+          const: set
+          default: set
+        value:
+          description: |
+            Valeur validée contre le schéma publié de l'information de réussite.
+            Une chaîne, un nombre, un booléen ou une liste de ces valeurs ; jamais
+            un objet, forme que l'extraction ne saurait produire ni corriger.
+          oneOf:
+            - type: string
+            - type: number
+            - type: boolean
+            - type: array
+              items:
+                oneOf:
+                  - type: string
+                  - type: number
+                  - type: boolean
+
+    UnsetDataUpdate:
+      type: object
+      additionalProperties: false
+      required: [id, operation]
+      properties:
+        id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        operation:
+          type: string
+          const: unset
+
+    NotApplicableDataUpdate:
+      type: object
+      additionalProperties: false
+      required: [id, operation]
+      properties:
+        id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        operation:
+          type: string
+          const: not_applicable
+
+    ObjectiveOverrideValue:
+      type: string
+      enum: [achieved, not_achieved]
+
+    SubObjectiveOverrideValue:
+      type: string
+      enum: [achieved, not_achieved, excluded]
+      description: |
+        `achieved` force le sous-objectif à couvert. `not_achieved` empêche une
+        complétion calculée prématurée. `excluded` le retire de la sélection et des
+        dénominateurs de progression de l'objectif.
+
+    SubObjectiveOverrideUpdate:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [id, operation, status]
+          properties:
+            id:
+              type: string
+              minLength: 1
+              maxLength: 128
+            operation:
+              type: string
+              const: set
+            status:
+              type: string
+              enum: [achieved, not_achieved]
+        - type: object
+          additionalProperties: false
+          required: [id, operation]
+          properties:
+            id:
+              type: string
+              minLength: 1
+              maxLength: 128
+            operation:
+              type: string
+              const: exclude
+        - type: object
+          additionalProperties: false
+          required: [id, operation]
+          properties:
+            id:
+              type: string
+              minLength: 1
+              maxLength: 128
+            operation:
+              type: string
+              const: clear
+
+    ObjectiveOverrideUpdate:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [operation, status]
+          properties:
+            operation:
+              type: string
+              const: set
+            status:
+              $ref: '#/components/schemas/ObjectiveOverrideValue'
+        - type: object
+          additionalProperties: false
+          required: [operation]
+          properties:
+            operation:
+              type: string
+              const: clear
+
+    SelectionOptions:
+      type: object
+      additionalProperties: false
+      description: |
+        Contraintes valables pour cet appel uniquement. Elles sont appliquées **avant**
+        le calcul du classement, jamais en filtrant un top 3 déjà constitué.
+      properties:
+        candidate_count:
+          type: integer
+          minimum: 1
+          maximum: 10
+          description: Remplace pour cet appel le nombre de propositions défini dans la configuration.
+        sub_objectives:
+          $ref: '#/components/schemas/SubObjectiveSelection'
+        allowed_question_types:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/QuestionType'
+        required_target_ids:
+          type: array
+          minItems: 1
+          maxItems: 100
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 1
+            maxLength: 128
+          description: N'accepter que des questions couvrant au moins une de ces cibles.
+        excluded_question_ids:
+          type: array
+          maxItems: 500
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 1
+            maxLength: 128
+
+    SubObjectiveSelection:
+      type: object
+      additionalProperties: false
+      required: [ids, mode]
+      properties:
+        ids:
+          type: array
+          minItems: 1
+          maxItems: 100
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 1
+            maxLength: 128
+        mode:
+          type: string
+          enum: [restrict, prefer]
+          description: |
+            `restrict` interdit strictement les questions hors de ces sous-objectifs.
+            `prefer` les favorise mais autorise un repli si aucun candidat éligible
+            n'y reste.
+
+    SessionEventsRequest:
+      type: object
+      additionalProperties: false
+      required: [state_version]
+      properties:
+        state_version:
+          type: integer
+          minimum: 0
+        context_update:
+          $ref: '#/components/schemas/ContextUpdate'
+        client_updates:
+          $ref: '#/components/schemas/ClientUpdates'
+      anyOf:
+        - required: [context_update]
+        - required: [client_updates]
+
+    FeedbackRequest:
+      type: object
+      additionalProperties: false
+      required: [result]
+      properties:
+        result:
+          type: string
+          enum: [success, partial, failure]
+          description: |
+            Vocabulaire générique : NBQ ne suppose pas qu'une conversation est une
+            qualification commerciale.
+        label:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Nom du résultat métier choisi par l'intégrateur, par exemple « achat » ou « rendez-vous ».
+        metadata:
+          type: object
+          additionalProperties:
+            oneOf:
+              - type: string
+                maxLength: 256
+              - type: number
+              - type: boolean
+              - type: 'null'
+          maxProperties: 50
+          description: |
+            Faits courts de corrélation non interprétés par NBQ : identifiant CRM,
+            montant, devise ou indicateur. Taille sérialisée maximale : 4 Kio.
+            Les messages, réponses, résumés, prompts et transcripts sont refusés.
+
+    FeedbackResponse:
+      type: object
+      additionalProperties: false
+      required: [request_id, session_id, feedback_id, recorded_at]
+      properties:
+        request_id:
+          type: string
+        session_id:
+          type: string
+        feedback_id:
+          type: string
+        recorded_at:
+          type: string
+          format: date-time
+
+    NextResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - request_id
+        - session_id
+        - decision_id
+        - action
+        - stop_reason
+        - candidates
+        - progress
+        - turn_count
+        - turns_remaining
+        - warnings
+        - degraded
+        - degraded_reasons
+        - versions
+      description: |
+        Aucun score de sélection n'est exposé : le classement est porté par `rank`.
+        Un score brut n'a pas de sens métier hors du moteur et ne doit pas devenir
+        une dépendance des intégrations.
+
+        **Invariants garantis par le moteur**, non exprimés en JSON Schema pour
+        rester générables en SDK, et couverts par les tests de contrat (NBQ-313) :
+
+        - `action: ask` implique `decision_id` non nul, `stop_reason` nul et au
+          moins un candidat ;
+        - `action: stop` implique `decision_id` nul, `stop_reason` renseigné et
+          `candidates` vide.
+      properties:
+        request_id:
+          type: string
+        session_id:
+          type: string
+        decision_id:
+          type: [string, 'null']
+          description: Non nul quand `action` vaut `ask`. À renvoyer dans le tour suivant si disponible.
+        action:
+          type: string
+          enum: [ask, stop]
+          description: |
+            `stop` n'est produit **que** lorsqu'aucune question identifiable
+            n'existe. Une limite de tours atteinte, un objectif déjà atteint ou une
+            éligibilité normale vide ne coupent pas la conversation : le moteur
+            propose encore la meilleure question disponible et le signale dans
+            `warnings`. La décision d'arrêter appartient à l'appelant.
+        stop_reason:
+          oneOf:
+            - $ref: '#/components/schemas/StopReason'
+            - type: 'null'
+        candidates:
+          type: array
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/Candidate'
+          description: |
+            Ordonnées par pertinence décroissante, rang 1 en premier. Lorsque
+            plusieurs candidats sont demandés, le moteur simule la couverture
+            apportée par le premier avant de choisir le suivant : deux variantes
+            demandant la même information ne sont pas retournées ensemble.
+        progress:
+          $ref: '#/components/schemas/ProgressView'
+        turn_count:
+          type: integer
+          minimum: 0
+        turns_remaining:
+          type: integer
+          minimum: 0
+          description: Vaut `0` lorsque la limite souple est atteinte ou dépassée.
+        warnings:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/SelectionWarning'
+        degraded:
+          type: boolean
+          description: Vrai lorsque la compréhension du tour a été effectuée en mode réduit.
+        degraded_reasons:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            enum:
+              - missing_user_text
+              - summary_only_context
+              - semantic_service_unavailable
+              - unresolved_previous_turn
+        versions:
+          $ref: '#/components/schemas/VersionInfo'
+
+    SelectionWarning:
+      type: string
+      enum:
+        - max_turns_reached
+        - objective_achieved
+        - eligibility_exhausted_fallback
+        - constraints_relaxed
+      description: |
+        Conditions d'arrêt réunies, sans que NBQ interrompe la conversation.
+
+        - `max_turns_reached` : la limite souple est atteinte ou dépassée ;
+        - `objective_achieved` : les conditions de réussite sont satisfaites ;
+        - `eligibility_exhausted_fallback` : plus aucune question n'était éligible
+          normalement, la proposition est un repli — elle porte tout de même un
+          `question_id` valide et respecte les exclusions dures ;
+        - `constraints_relaxed` : une préférence `prefer` a dû être élargie.
+
+    StopReason:
+      type: string
+      enum: [no_question_available]
+      description: |
+        Unique cause d'arrêt dur : aucune question identifiable ne subsiste après
+        application des exclusions dures — question inactive, sous-objectif exclu par
+        le client, contrainte stricte de l'appel. Les autres situations terminales
+        remontent par `warnings`, la conversation restant décidée par l'appelant.
+
+    Candidate:
+      type: object
+      additionalProperties: false
+      required: [rank, question_id, text, type, choices, target_ids]
+      description: |
+        **Invariant garanti par le moteur**, couvert par les tests de contrat :
+        `type: open` implique `choices` vide ; tout autre type implique au moins
+        deux choix.
+      properties:
+        rank:
+          type: integer
+          minimum: 1
+          maximum: 10
+        question_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Toujours un identifiant valide du corpus publié, y compris pour un repli.
+        text:
+          type: string
+          minLength: 1
+          maxLength: 4000
+          description: |
+            Libellé publié de la question. L'agent hôte reste libre de le reformuler :
+            NBQ sait rattacher un texte reformulé à sa question au tour suivant.
+        type:
+          $ref: '#/components/schemas/QuestionType'
+        choices:
+          type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/CandidateChoice'
+          description: Vide pour une question ouverte.
+        target_ids:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 1
+            maxLength: 128
+          description: Cibles que cette question adresse, principale en premier.
+
+    QuestionType:
+      type: string
+      enum: [open, single_choice, multiple_choice, semi_open]
+      description: |
+        - `open` : réponse libre, aucun choix ;
+        - `single_choice` : un seul choix parmi la liste ;
+        - `multiple_choice` : plusieurs choix possibles ;
+        - `semi_open` : choix proposés, complément libre autorisé via
+          `structured_answer.free_text`.
+
+        Le mode de sélection est porté par le type lui-même : aucun champ
+        `selection_mode` séparé n'existe en V1.
+
+    CandidateChoice:
+      type: object
+      additionalProperties: false
+      required: [choice_id, label]
+      properties:
+        choice_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        label:
+          type: string
+          minLength: 1
+          maxLength: 500
+
+    SessionStateResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - request_id
+        - session_id
+        - client_reference
+        - status
+        - turn_count
+        - max_turns
+        - turns_remaining
+        - question_state
+        - targets
+        - progress
+        - pending_decision
+        - degraded
+        - versions
+      properties:
+        request_id:
+          type: string
+        session_id:
+          type: string
+        client_reference:
+          type: [string, 'null']
+        status:
+          type: string
+          enum: [active, completed, stopped]
+        turn_count:
+          type: integer
+          minimum: 0
+        max_turns:
+          type: integer
+          minimum: 1
+        turns_remaining:
+          type: integer
+          minimum: 0
+        question_state:
+          $ref: '#/components/schemas/PublicQuestionState'
+        targets:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/PublicTargetState'
+          description: |
+            État sparse : seules les cibles réellement touchées sont présentes. Une
+            cible absente est inconnue et sans couverture.
+        progress:
+          $ref: '#/components/schemas/ProgressView'
+        pending_decision:
+          oneOf:
+            - $ref: '#/components/schemas/PendingDecisionView'
+            - type: 'null'
+        degraded:
+          type: boolean
+        versions:
+          $ref: '#/components/schemas/VersionInfo'
+
+    PublicQuestionState:
+      type: object
+      additionalProperties: false
+      required: [outcomes]
+      description: |
+        Aucun index `asked_ids`, `answered_ids` ou `refused_ids` n'est persisté ni
+        exposé : ces ensembles se reconstruisent depuis `outcomes`.
+      properties:
+        outcomes:
+          type: array
+          items:
+            $ref: '#/components/schemas/QuestionOutcomeRecord'
+
+    QuestionOutcomeRecord:
+      type: object
+      additionalProperties: false
+      required: [question_id, decision_id, outcome, source]
+      properties:
+        question_id:
+          type: string
+        decision_id:
+          type: [string, 'null']
+          description: Nul lorsque la question a été traitée hors d'une décision NBQ.
+        outcome:
+          $ref: '#/components/schemas/QuestionOutcome'
+        source:
+          type: string
+          enum: [client, inferred]
+          description: Indique si l'outcome a été fourni par le client ou résolu par NBQ.
+        message_id:
+          type: [string, 'null']
+        occurred_at:
+          type: [string, 'null']
+          format: date-time
+
+    PublicTargetState:
+      type: object
+      additionalProperties: false
+      required: [kind, coverage]
+      description: |
+        Vue publique d'une cible. Les preuves sémantiques détaillées, les deltas de
+        couverture et les références d'embedding restent internes au
+        moteur et ne sont jamais renvoyés.
+      properties:
+        kind:
+          type: string
+          enum: [data, exploration]
+          description: |
+            `data` désigne une information de réussite : une donnée concrète dont la
+            collecte permet de déclarer l'objectif atteint.
+
+            `exploration` est la cible interne d'une question qui n'est reliée à
+            aucune information de réussite. Elle mesure ce que la conversation a déjà
+            couvert et évite les répétitions, mais ne bloque jamais la réussite de
+            l'objectif. Les nouvelles publications sans prototypes évaluent directement
+            les réponses réelles. Les sessions épinglées à un ancien artefact
+            conservent leur méthode de couverture historique.
+        status:
+          type: string
+          enum: [tentative, confirmed, conflicted, not_applicable]
+          description: |
+            Présent uniquement pour `kind: data`. Une cible inconnue est absente de
+            l'état plutôt que portée avec un statut `unknown`.
+
+            `tentative` porte une valeur probable : elle fait monter `coverage`
+            mais ne permet jamais de conclure ;
+            `conflicted` signale plusieurs valeurs valides contradictoires ;
+            `not_applicable` satisfait l'information sans valeur.
+        value:
+          description: Présente uniquement pour une information de réussite possédant une valeur courante.
+        coverage:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: |
+            Ce que la conversation a déjà obtenu sur cette cible.
+
+            Pour une information de réussite : `1` quand elle est `confirmed` ou
+            `not_applicable`, `0` quand rien n'a été recueilli, et une valeur
+            **intermédiaire** quand le statut est `tentative` — une valeur
+            probable a été captée mais n'est pas encore assez fiable pour
+            conclure. Une donnée `conflicted` retombe à `0` : des valeurs
+            contradictoires n'apportent aucune certitude.
+
+            Pour une cible d'exploration sans prototypes : meilleur soutien actif
+            à la cible, dérivé des réponses réelles ; une réponse suffisante vaut
+            `1`, sans devoir couvrir plusieurs exemples alternatifs. Une correction
+            explicite peut réduire cette couverture. Pour les anciennes publications,
+            le calcul historique sur les prototypes reste inchangé.
+
+            ⚠️ `coverage` sert à mesurer l'avancement et à classer les questions,
+            **jamais à décider de la réussite**. La complétion d'un
+            sous-objectif se calcule à partir de `status`, où seuls `confirmed`
+            et `not_applicable` comptent : une information `tentative` fait
+            monter la progression visible sans jamais permettre de déclarer
+            l'objectif atteint. Les deux grandeurs se ressemblent et ne se
+            substituent pas l'une à l'autre.
+
+    ProgressView:
+      type: object
+      additionalProperties: false
+      required: [objective, sub_objectives]
+      properties:
+        objective:
+          $ref: '#/components/schemas/ObjectiveProgress'
+        sub_objectives:
+          type: array
+          items:
+            $ref: '#/components/schemas/SubObjectiveProgress'
+
+    ProgressStatus:
+      type: string
+      enum: [not_started, in_progress, covered, blocked]
+
+    ObjectiveProgress:
+      type: object
+      additionalProperties: false
+      required: [computed_status, progress, client_override, effective_status]
+      properties:
+        computed_status:
+          $ref: '#/components/schemas/ProgressStatus'
+        progress:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: |
+            Agrégation des sous-objectifs pondérée par leur rôle de complétion. Les
+            sous-objectifs exclus sortent du dénominateur.
+        client_override:
+          oneOf:
+            - $ref: '#/components/schemas/ObjectiveClientOverrideView'
+            - type: 'null'
+        effective_status:
+          $ref: '#/components/schemas/ProgressStatus'
+
+    SubObjectiveProgress:
+      type: object
+      additionalProperties: false
+      required: [id, order_position, completion_role, computed_status, progress, client_override, effective_status]
+      properties:
+        id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        order_position:
+          type: integer
+          minimum: 0
+        completion_role:
+          $ref: '#/components/schemas/CompletionRole'
+        computed_status:
+          $ref: '#/components/schemas/ProgressStatus'
+        progress:
+          type: number
+          minimum: 0
+          maximum: 1
+        client_override:
+          oneOf:
+            - $ref: '#/components/schemas/SubObjectiveClientOverrideView'
+            - type: 'null'
+        effective_status:
+          type: string
+          enum: [not_started, in_progress, covered, blocked, excluded]
+          description: |
+            Statut consommable par le client après application de `client_override`
+            au `computed_status` : sans override, le statut calculé ; `achieved`
+            force `covered` ; `not_achieved` conserve le statut calculé sauf que
+            `covered` redevient `in_progress` ; `excluded` retire le sous-objectif de
+            la sélection et des agrégations de l'objectif.
+
+    ObjectiveClientOverrideView:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status:
+          $ref: '#/components/schemas/ObjectiveOverrideValue'
+        updated_at:
+          type: string
+          format: date-time
+
+    SubObjectiveClientOverrideView:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status:
+          $ref: '#/components/schemas/SubObjectiveOverrideValue'
+        updated_at:
+          type: string
+          format: date-time
+
+    PendingDecisionView:
+      type: object
+      additionalProperties: false
+      required: [decision_id, candidates]
+      description: |
+        Décision proposée et pas encore résolue. Les candidats sont réhydratés depuis
+        la configuration épinglée : après un crash, relire la session suffit pour
+        reprendre exactement où l'on s'était arrêté. Aucun jeton de reprise n'existe.
+      properties:
+        decision_id:
+          type: string
+        candidates:
+          type: array
+          minItems: 1
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/Candidate'
+
+    VersionInfo:
+      type: object
+      additionalProperties: false
+      required: [state_version, engine_version, api_version]
+      description: |
+        La version de configuration épinglée par la session n'est pas exposée : le
+        client ne la choisit pas et ne doit pas s'y adosser.
+      properties:
+        state_version:
+          type: integer
+          minimum: 0
+          description: À renvoyer dans la mutation suivante de cette session.
+        engine_version:
+          type: string
+        api_version:
+          type: string
+          const: '1.0'
+
+    # ----------------------------------------------------------- Configuration
+
+    CompletionRole:
+      type: string
+      enum: [blocking, contributing, optional]
+      description: |
+        Rôle d'un sous-objectif dans la réussite de l'objectif.
+
+        - `blocking` : doit être couvert pour conclure normalement ;
+        - `contributing` : participe au niveau de qualification exigé ;
+        - `optional` : améliore la conversation mais ne bloque jamais la réussite.
+
+        Le poids moteur est dérivé du rôle. Le client ne saisit aucun poids métier.
+
+    QualificationLevel:
+      type: string
+      enum: [essential, balanced, deep]
+      description: |
+        Exigence de couverture des sous-objectifs `contributing`.
+
+        - `essential` : seules les informations de réussite et les sous-objectifs
+          `blocking` sont exigés ;
+        - `balanced` : couverture moyenne des `contributing` exigée à `0.80` ;
+        - `deep` : couverture moyenne des `contributing` exigée à `1.00`.
+
+    ConfigurationResponse:
+      type: object
+      additionalProperties: false
+      required: [request_id, state, objective, sub_objectives, success_informations, questions]
+      description: |
+        Les quatre objets visibles dans NBQ Studio. Ni prototypes de réponse, ni
+        graphe de relations, ni matrices, ni artefact compilé n'apparaissent ici :
+        ce sont des internes de compilation.
+      properties:
+        request_id:
+          type: string
+        state:
+          type: string
+          enum: [published, draft]
+        configuration_version:
+          type: [string, 'null']
+          description: Renseignée pour `published`, nulle pour un brouillon jamais publié.
+        draft_revision:
+          type: [integer, 'null']
+          description: Renseignée pour `draft`, à passer en `expected_draft_revision` lors de la publication.
+        published_at:
+          type: [string, 'null']
+          format: date-time
+        objective:
+          $ref: '#/components/schemas/Objective'
+        sub_objectives:
+          type: array
+          items:
+            $ref: '#/components/schemas/SubObjective'
+        success_informations:
+          type: array
+          items:
+            $ref: '#/components/schemas/SuccessInformation'
+        questions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConfiguredQuestion'
+
+    Objective:
+      type: object
+      additionalProperties: false
+      required: [name, qualification_level, max_turns, candidates_per_call, order_strength]
+      description: |
+        Champs volontairement absents en V1 : `min_turns_before_auto_complete`,
+        `retention_mode`, `business_weight`, et toute version de corpus choisie par
+        le client.
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        description:
+          type: string
+          maxLength: 4000
+        qualification_level:
+          $ref: '#/components/schemas/QualificationLevel'
+        max_turns:
+          type: integer
+          minimum: 1
+          maximum: 100
+          description: Limite souple. L'atteindre ne coupe pas la conversation.
+        candidates_per_call:
+          type: integer
+          minimum: 1
+          maximum: 10
+        order_strength:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: Force avec laquelle l'ordre des sous-objectifs influence la sélection.
+
+    SubObjective:
+      type: object
+      additionalProperties: false
+      required: [id, name, order_position, completion_role]
+      properties:
+        id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        order_position:
+          type: integer
+          minimum: 0
+        completion_role:
+          $ref: '#/components/schemas/CompletionRole'
+
+    SuccessInformation:
+      type: object
+      additionalProperties: false
+      required: [id, label, schema, primary_question_id]
+      description: |
+        Une information de réussite est obligatoire par définition : aucun champ
+        `required` n'est exposé. Son rattachement à un sous-objectif est dérivé de sa
+        question principale, et elle ne peut pas dépendre uniquement d'un
+        sous-objectif `optional`.
+      properties:
+        id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        label:
+          type: string
+          minLength: 1
+          maxLength: 200
+        schema:
+          type: object
+          additionalProperties: true
+          description: Schéma JSON de validation de la valeur collectée.
+        primary_question_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Question active désignée comme principale pour collecter cette information.
+
+    ConfiguredQuestion:
+      type: object
+      additionalProperties: false
+      required: [id, text, type, sub_objective_id, active, choices]
+      description: |
+        Champs volontairement absents en V1 : `must_ask`, `requirement_policy`,
+        `importance`, `editor_weight`, `cost_profile`, sensibilité, effort et
+        `expected_answer_elements`. Une question devient nécessaire parce qu'elle est
+        la meilleure manière encore disponible d'obtenir une information manquante,
+        pas parce qu'un éditeur l'a marquée obligatoire.
+      properties:
+        id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        text:
+          type: string
+          minLength: 1
+          maxLength: 4000
+        type:
+          $ref: '#/components/schemas/QuestionType'
+        choices:
+          type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/ConfiguredChoice'
+        sub_objective_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Exactement un sous-objectif.
+        active:
+          type: boolean
+
+    ConfiguredChoice:
+      type: object
+      additionalProperties: false
+      required: [id, label]
+      properties:
+        id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        label:
+          type: string
+          minLength: 1
+          maxLength: 500
+        maps_to_value:
+          description: |
+            Valeur produite pour l'information de réussite lorsque ce choix est
+            sélectionné. Permet le mapping déterministe sans appel LLM.
+
+    QuestionListResponse:
+      type: object
+      additionalProperties: false
+      required: [request_id, state, questions, next_cursor]
+      properties:
+        request_id:
+          type: string
+        state:
+          type: string
+          enum: [published, draft]
+        questions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConfiguredQuestion'
+        next_cursor:
+          type: [string, 'null']
+          description: Curseur de la page suivante, `null` sur la dernière page.
+        total:
+          type: integer
+          minimum: 0
+          description: Nombre total de questions correspondant au filtre.
+
+    ConfigurationAuditResourceType:
+      type: string
+      enum: [objective, sub_objective, success_information, question, configuration, api_key, nbq]
+
+    ConfigurationAuditActor:
+      type: object
+      additionalProperties: false
+      required: [type, id]
+      properties:
+        type:
+          type: string
+          enum: [api_key, cognito_user]
+        id:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: Identifiant utilisateur interne, ou empreinte SHA-256 de la clé API ; jamais la clé en clair.
+
+    ConfigurationAuditResource:
+      type: object
+      additionalProperties: false
+      required: [type, id]
+      properties:
+        type:
+          $ref: '#/components/schemas/ConfigurationAuditResourceType'
+        id:
+          type: string
+          minLength: 1
+          maxLength: 200
+
+    ConfigurationAuditDiff:
+      type: object
+      additionalProperties: false
+      required: [before, after]
+      description: |
+        Vue structurelle assainie. Les valeurs éditoriales libres sont remplacées
+        par une indication de changement ; seules les valeurs moteur non sensibles
+        comme `active`, `order_position` ou `completion_role` sont conservées.
+      properties:
+        before:
+          type: [object, 'null']
+          additionalProperties: true
+        after:
+          type: [object, 'null']
+          additionalProperties: true
+
+    ConfigurationAuditEvent:
+      type: object
+      additionalProperties: false
+      required: [id, occurred_at, action, origin, actor, scopes, request_id, resource, diff, details]
+      properties:
+        id:
+          type: string
+          format: uuid
+        occurred_at:
+          type: string
+          format: date-time
+        action:
+          type: string
+          minLength: 1
+          maxLength: 160
+        origin:
+          type: string
+          enum: [public_api, studio_jwt]
+        actor:
+          $ref: '#/components/schemas/ConfigurationAuditActor'
+        scopes:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+        request_id:
+          type: string
+          minLength: 1
+          maxLength: 200
+        resource:
+          $ref: '#/components/schemas/ConfigurationAuditResource'
+        diff:
+          $ref: '#/components/schemas/ConfigurationAuditDiff'
+        details:
+          type: object
+          additionalProperties: true
+          description: Identifiants et compteurs techniques bornés, sans contenu conversationnel ou secret.
+
+    ConfigurationAuditPage:
+      type: object
+      additionalProperties: false
+      required: [request_id, events, next_cursor]
+      properties:
+        request_id:
+          type: string
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConfigurationAuditEvent'
+        next_cursor:
+          type: [string, 'null']
+          description: Curseur de la page suivante, `null` sur la dernière page.
+
+    ConfigurationChangesRequest:
+      type: object
+      additionalProperties: false
+      required: [changes]
+      properties:
+        expected_draft_revision:
+          type: integer
+          minimum: 0
+          description: |
+            Si fourni, les changements ne sont appliqués que si le brouillon est
+            toujours à cette révision. Sinon `configuration_validation_failed` avec
+            le code `draft_revision_mismatch`.
+        changes:
+          type: array
+          minItems: 1
+          maxItems: 500
+          items:
+            $ref: '#/components/schemas/ConfigurationChange'
+          description: Opérations appliquées dans l'ordre, atomiquement.
+
+    ConfigurationChange:
+      oneOf:
+        - $ref: '#/components/schemas/ObjectiveChange'
+        - $ref: '#/components/schemas/SubObjectiveChange'
+        - $ref: '#/components/schemas/SuccessInformationChange'
+        - $ref: '#/components/schemas/QuestionChange'
+      discriminator:
+        propertyName: entity
+        mapping:
+          objective: '#/components/schemas/ObjectiveChange'
+          sub_objective: '#/components/schemas/SubObjectiveChange'
+          success_information: '#/components/schemas/SuccessInformationChange'
+          question: '#/components/schemas/QuestionChange'
+
+    ObjectiveChange:
+      type: object
+      additionalProperties: false
+      required: [entity, operation, objective]
+      properties:
+        entity:
+          type: string
+          const: objective
+        operation:
+          type: string
+          const: update
+          description: L'objectif existe toujours ; il ne peut être ni créé ni supprimé.
+        objective:
+          type: object
+          additionalProperties: false
+          minProperties: 1
+          properties:
+            name:
+              type: string
+              minLength: 1
+              maxLength: 200
+            description:
+              type: string
+              maxLength: 4000
+            qualification_level:
+              $ref: '#/components/schemas/QualificationLevel'
+            max_turns:
+              type: integer
+              minimum: 1
+              maximum: 100
+            candidates_per_call:
+              type: integer
+              minimum: 1
+              maximum: 10
+            order_strength:
+              type: number
+              minimum: 0
+              maximum: 1
+
+    SubObjectiveChange:
+      type: object
+      additionalProperties: false
+      required: [entity, operation, sub_objective]
+      properties:
+        entity:
+          type: string
+          const: sub_objective
+        operation:
+          type: string
+          enum: [create, update, delete]
+        sub_objective:
+          type: object
+          additionalProperties: false
+          required: [id]
+          properties:
+            id:
+              type: string
+              minLength: 1
+              maxLength: 128
+            name:
+              type: string
+              minLength: 1
+              maxLength: 200
+            order_position:
+              type: integer
+              minimum: 0
+            completion_role:
+              $ref: '#/components/schemas/CompletionRole'
+
+    SuccessInformationChange:
+      type: object
+      additionalProperties: false
+      required: [entity, operation, success_information]
+      properties:
+        entity:
+          type: string
+          const: success_information
+        operation:
+          type: string
+          enum: [create, update, delete]
+        success_information:
+          type: object
+          additionalProperties: false
+          required: [id]
+          properties:
+            id:
+              type: string
+              minLength: 1
+              maxLength: 128
+            label:
+              type: string
+              minLength: 1
+              maxLength: 200
+            schema:
+              type: object
+              additionalProperties: true
+            primary_question_id:
+              type: string
+              minLength: 1
+              maxLength: 128
+
+    QuestionChange:
+      type: object
+      additionalProperties: false
+      required: [entity, operation, question]
+      properties:
+        entity:
+          type: string
+          const: question
+        operation:
+          type: string
+          enum: [create, update, delete]
+        question:
+          type: object
+          additionalProperties: false
+          required: [id]
+          properties:
+            id:
+              type: string
+              minLength: 1
+              maxLength: 128
+            text:
+              type: string
+              minLength: 1
+              maxLength: 4000
+            type:
+              $ref: '#/components/schemas/QuestionType'
+            choices:
+              type: array
+              maxItems: 50
+              items:
+                $ref: '#/components/schemas/ConfiguredChoice'
+            sub_objective_id:
+              type: string
+              minLength: 1
+              maxLength: 128
+            active:
+              type: boolean
+
+    ConfigurationChangesResponse:
+      type: object
+      additionalProperties: false
+      required: [request_id, draft_revision, applied, warnings]
+      properties:
+        request_id:
+          type: string
+        draft_revision:
+          type: integer
+          minimum: 0
+          description: Nouvelle révision du brouillon après application.
+        applied:
+          type: integer
+          minimum: 0
+        warnings:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConfigurationIssue'
+          description: |
+            Anomalies non bloquantes pour l'édition, mais qui empêcheront la
+            publication si elles ne sont pas corrigées.
+
+    PublishRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        expected_draft_revision:
+          type: integer
+          minimum: 0
+          description: |
+            Refuse la publication si le brouillon a changé depuis cette révision.
+            Recommandé depuis Studio pour éviter de publier le travail d'un autre
+            éditeur.
+
+    CompilationStatus:
+      type: object
+      additionalProperties: false
+      required: [request_id, compilation_id, status, draft_revision, created_at, updated_at, progress, error, configuration_version]
+      properties:
+        request_id:
+          type: string
+        compilation_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        status:
+          type: string
+          enum: [queued, running, succeeded, failed]
+        draft_revision:
+          type: integer
+          minimum: 0
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        progress:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: Avancement indicatif, sans garantie de linéarité.
+        error:
+          oneOf:
+            - $ref: '#/components/schemas/CompilationError'
+            - type: 'null'
+        configuration_version:
+          type: [string, 'null']
+          description: Version désormais active, renseignée uniquement en `succeeded`.
+
+    CompilationError:
+      type: object
+      additionalProperties: false
+      required: [code, message]
+      description: |
+        Cause bornée d'un échec de compilation. Aucune trace interne, aucun prompt et
+        aucun contenu de lot n'est exposé.
+
+        `details` n'est renseigné que pour `validation_failed`, dont les erreurs sont
+        corrigeables par l'éditeur ; pour `llm_unavailable`, `timeout` et
+        `internal_error`, il reste absent.
+      properties:
+        code:
+          type: string
+          enum: [validation_failed, llm_unavailable, timeout, internal_error]
+        message:
+          type: string
+          minLength: 1
+        details:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConfigurationIssue'
+
+    ConfigurationIssue:
+      type: object
+      additionalProperties: false
+      required: [code, message]
+      description: Anomalie de configuration, structurée pour être affichée telle quelle dans Studio.
+      properties:
+        code:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: |
+            Identifiant stable et lisible de l'anomalie, en minuscules avec des
+            traits de soulignement.
+
+            **Volontairement non figé en énumération.** Les validations de
+            publication se stabiliseront avec NBQ-108, NBQ-306 et NBQ-311, en
+            particulier celles liées à la génération des cibles d'exploration :
+            fermer le catalogue maintenant imposerait une modification du contrat
+            à chaque validation découverte, et certains codes envisagés se
+            révéleraient prématurés. Il sera figé avant la génération des SDK.
+
+            Codes déjà employés, à traiter comme un socle et non comme une liste
+            exhaustive : `question_without_sub_objective`,
+            `question_without_target`, `inactive_primary_question`,
+            `success_information_without_schema`,
+            `success_information_without_active_question`,
+            `success_information_only_in_optional_sub_objective`,
+            `invalid_choice_mapping`, `duplicate_id`, `unknown_reference`,
+            `draft_revision_mismatch`.
+
+            Un client doit afficher `message` et ne jamais présumer qu'il
+            connaît tous les codes.
+        message:
+          type: string
+          minLength: 1
+        entity:
+          type: string
+          enum: [objective, sub_objective, success_information, question]
+        entity_id:
+          type: string
+          maxLength: 128
+        change_index:
+          type: integer
+          minimum: 0
+          description: Position de l'opération fautive dans `changes`, lorsque l'anomalie vient d'un changement.
+
+    # ------------------------------------------------------------------ Erreurs
+
+    ErrorCode:
+      type: string
+      description: Catalogue fermé des erreurs métier V1.
+      enum:
+        - unauthorized
+        - insufficient_scope
+        - idempotency_contention
+        - state_version_conflict
+        - idempotency_key_reused
+        - unknown_session
+        - invalid_previous_turn
+        - constraint_no_match
+        - invalid_choice
+        - compiled_artifact_unavailable
+        - configuration_validation_failed
+        - compilation_in_progress
+        - unknown_configuration
+        - unknown_compilation
+
+    ErrorEnvelope:
+      type: object
+      additionalProperties: false
+      required: [code, message, request_id, details]
+      description: Enveloppe uniforme de toutes les erreurs métier.
+      properties:
+        code:
+          $ref: '#/components/schemas/ErrorCode'
+        message:
+          type: string
+          minLength: 1
+        request_id:
+          type: string
+          minLength: 1
+        details:
+          type: object
+          additionalProperties: true
+
+    # ------------------------------------------------------------------ Legacy
+
+    LegacyNextQuestionsRequest:
+      type: object
+      deprecated: true
+      required: [session_id]
+      properties:
+        session_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Identifiant choisi par le client, contrairement à la V1 où NBQ l'attribue.
+        conversation_history:
+          type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/LegacyMessage'
+        context:
+          type: [string, 'null']
+          maxLength: 8000
+        answered_question_ids:
+          type: array
+          maxItems: 200
+          items:
+            type: string
+
+    LegacyMessage:
+      type: object
+      deprecated: true
+      required: [role, content]
+      properties:
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: string
+          minLength: 1
+          maxLength: 2000
+
+    LegacyNextQuestionsResponse:
+      type: object
+      deprecated: true
+      required: [next_question, exhausted, nbq_version, request_id]
+      properties:
+        next_question:
+          oneOf:
+            - type: object
+              required: [external_id, text]
+              properties:
+                external_id:
+                  type: string
+                text:
+                  type: string
+            - type: 'null'
+        exhausted:
+          type: boolean
+        nbq_version:
+          type: string
+        request_id:
+          type: string
+
+    LegacyConversionRequest:
+      type: object
+      deprecated: true
+      required: [outcome]
+      properties:
+        outcome:
+          type: string
+          enum: [purchase, lead, abandon, other]
+        metadata:
+          type: object
+          additionalProperties: true
+
+    LegacyConversionResponse:
+      type: object
+      deprecated: true
+      required: [conversion_id, request_id]
+      properties:
+        conversion_id:
+          type: string
+        request_id:
+          type: string
+
+  responses:
+
+    Unauthorized:
+      description: |
+        Clé absente, malformée, inconnue, révoquée, expirée, ou rattachée à un NBQ
+        suspendu. Le refus vient de l'authorizer de la passerelle, avant que la
+        requête n'atteigne le service : le corps est donc produit par la passerelle
+        et peut ne pas suivre l'enveloppe d'erreur métier.
+
+        La distinction avec `403` est nette : `401` signifie « je ne sais pas qui
+        vous êtes », `403` signifie « je sais qui vous êtes, mais cette clé ne porte
+        pas le scope requis ».
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            code: unauthorized
+            message: Clé d'intégration absente ou invalide.
+            request_id: req_9000
+            details: {}
+
+    IdempotencyContention:
+      description: |
+        La clé d'idempotence n'a pas pu être réservée après deux tentatives, à cause
+        d'un cycle anormal de requêtes concurrentes portant la même clé.
+
+        Ce n'est **pas** une erreur du client et ce n'est pas un conflit : réessayer
+        après un court délai a des chances d'aboutir. À distinguer de
+        `idempotency_key_reused`, qui est définitif pour ce couple clé/corps.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            code: idempotency_contention
+            message: La clé d'idempotence n'a pas pu être réservée, réessayez.
+            request_id: req_9017
+            details:
+              idempotency_key: next-ses01J8Z-turn-4
+              retry_after_seconds: 1
+
+    InsufficientScope:
+      description: |
+        La clé est valide mais ne porte pas le scope exigé par l'opération. Une clé
+        absente ou invalide produit `401` au niveau de la passerelle, avant d'atteindre
+        le service.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            code: insufficient_scope
+            message: Cette clé ne permet pas de publier une configuration.
+            request_id: req_9001
+            details:
+              required_scopes: [configuration:publish]
+              granted_scopes: [configuration:read, configuration:write]
+
+    IdempotencyConflict:
+      description: La clé d'idempotence a déjà servi pour un corps différent.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            code: idempotency_key_reused
+            message: Cette clé d'idempotence est déjà associée à une autre requête.
+            request_id: req_9002
+            details:
+              idempotency_key: create-session-8842
+
+    SessionMutationConflict:
+      description: Conflit de version optimiste ou réutilisation d'une clé d'idempotence.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          examples:
+            state_version_conflict:
+              summary: La session a été modifiée entre-temps
+              value:
+                code: state_version_conflict
+                message: La session a été modifiée depuis votre dernière lecture.
+                request_id: req_9003
+                details:
+                  supplied_state_version: 7
+                  current_state_version: 8
+            idempotency_key_reused:
+              summary: Même clé, corps différent
+              value:
+                code: idempotency_key_reused
+                message: Cette clé d'idempotence est déjà associée à une autre requête.
+                request_id: req_9004
+                details:
+                  idempotency_key: next-ses01J8Z-turn-4
+
+    PublishConflict:
+      description: Une compilation est déjà en cours, ou la clé d'idempotence a été réutilisée.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          examples:
+            compilation_in_progress:
+              summary: Un job est déjà queued ou running pour ce NBQ
+              value:
+                code: compilation_in_progress
+                message: Une compilation est déjà en cours pour cette configuration.
+                request_id: req_9005
+                details:
+                  compilation_id: cmp_01K2QF
+                  status: running
+            idempotency_key_reused:
+              summary: Même clé, corps différent
+              value:
+                code: idempotency_key_reused
+                message: Cette clé d'idempotence est déjà associée à une autre requête.
+                request_id: req_9006
+                details:
+                  idempotency_key: publish-rev-42
+
+    UnknownSession:
+      description: Session inconnue, ou appartenant à un autre tenant.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            code: unknown_session
+            message: La session demandée est inconnue.
+            request_id: req_9007
+            details:
+              session_id: ses_inconnue
+
+    UnknownConfiguration:
+      description: |
+        Aucune configuration ne correspond à l'état demandé — par exemple un brouillon
+        qui n'a jamais été créé.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            code: unknown_configuration
+            message: Aucun brouillon n'existe pour cette configuration.
+            request_id: req_9008
+            details:
+              state: draft
+
+    UnknownCompilation:
+      description: Job de compilation inconnu, ou appartenant à un autre tenant.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            code: unknown_compilation
+            message: Ce job de compilation est inconnu.
+            request_id: req_9009
+            details:
+              compilation_id: cmp_inconnu
+
+    CompiledArtifactUnavailable:
+      description: |
+        L'artefact compilé épinglé par la session est réellement inaccessible. Une
+        configuration simplement remplacée par une version plus récente ne produit pas
+        cette erreur : l'ancienne version reste lisible pour terminer les sessions qui
+        l'utilisent déjà.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            code: compiled_artifact_unavailable
+            message: L'artefact moteur de cette session est temporairement indisponible.
+            request_id: req_9010
+            details:
+              session_id: ses_01J8Z
+
+    NextUnprocessable:
+      description: |
+        Le tour précédent est incohérent, ou les contraintes de l'appel ne laissent
+        aucune question possible.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          examples:
+            invalid_previous_turn:
+              summary: Les identifiants fournis contredisent la décision en attente
+              value:
+                code: invalid_previous_turn
+                message: Les identifiants fournis ne correspondent pas à la décision en attente.
+                request_id: req_9011
+                details:
+                  pending_decision_id: dec_7f2a
+                  supplied_decision_id: dec_7f29
+                  supplied_question_id: q_budget
+                  candidate_question_ids: [q_style, q_budget, q_delai]
+            constraint_no_match:
+              summary: Aucune question ne satisfait les contraintes strictes demandées
+              value:
+                code: constraint_no_match
+                message: Aucune question disponible ne satisfait les contraintes demandées.
+                request_id: req_9012
+                details:
+                  allowed_question_types: [multiple_choice]
+                  required_target_ids: [annual_budget]
+            invalid_choice:
+              summary: Un choix n'appartient pas à la question résolue
+              value:
+                code: invalid_choice
+                message: Un choix fourni ne correspond pas à la question résolue.
+                request_id: req_9013
+                details:
+                  question_id: q_style
+                  invalid_choice_ids: [choice_inconnu]
+
+    InvalidChoice:
+      description: Une valeur fournie n'appartient pas au schéma ou aux choix publiés.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            code: invalid_choice
+            message: La valeur fournie n'est pas valide pour cette information de réussite.
+            request_id: req_9014
+            details:
+              data_id: delivery_window
+              invalid_value: dans_deux_ans
+
+    ConfigurationValidationFailed:
+      description: |
+        La validation du brouillon a échoué. Toutes les anomalies sont renvoyées
+        ensemble, avec la position de l'opération fautive lorsqu'elle vient d'un
+        changement, afin que Studio puisse les afficher d'un seul coup.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          examples:
+            validation_publication:
+              summary: Le brouillon n'est pas publiable
+              value:
+                code: configuration_validation_failed
+                message: La configuration comporte 2 anomalies bloquantes.
+                request_id: req_9015
+                details:
+                  issues:
+                    - code: success_information_without_active_question
+                      message: L'information « Fenêtre de livraison souhaitée » n'a pas de question active.
+                      entity: success_information
+                      entity_id: delivery_window
+                    - code: success_information_only_in_optional_sub_objective
+                      message: L'information « Budget annuel » ne dépend que d'un sous-objectif optionnel.
+                      entity: success_information
+                      entity_id: annual_budget
+            revision_perimee:
+              summary: Le brouillon a changé depuis la lecture du client
+              value:
+                code: configuration_validation_failed
+                message: Le brouillon a été modifié depuis votre dernière lecture.
+                request_id: req_9016
+                details:
+                  issues:
+                    - code: draft_revision_mismatch
+                      message: Révision attendue 42, révision courante 44.
+                      entity: objective
+
+  examples:
+
+    SessionNeuve:
+      summary: Session tout juste créée, aucun tour joué
+      value:
+        request_id: req_1001
+        session_id: ses_01J8Z
+        client_reference: crm-lead-8842
+        status: active
+        turn_count: 0
+        max_turns: 10
+        turns_remaining: 10
+        question_state:
+          outcomes: []
+        targets: {}
+        progress:
+          objective:
+            computed_status: not_started
+            progress: 0
+            client_override: null
+            effective_status: not_started
+          sub_objectives:
+            - id: so_besoin
+              order_position: 0
+              completion_role: blocking
+              computed_status: not_started
+              progress: 0
+              client_override: null
+              effective_status: not_started
+            - id: so_budget
+              order_position: 1
+              completion_role: blocking
+              computed_status: not_started
+              progress: 0
+              client_override: null
+              effective_status: not_started
+            - id: so_livraison
+              order_position: 2
+              completion_role: contributing
+              computed_status: not_started
+              progress: 0
+              client_override: null
+              effective_status: not_started
+        pending_decision: null
+        degraded: false
+        versions:
+          state_version: 0
+          engine_version: 1.0.0
+          api_version: '1.0'
+
+    DecisionNormale:
+      summary: Le tour précédent a été compris, deux questions sont proposées
+      value:
+        request_id: req_1002
+        session_id: ses_01J8Z
+        decision_id: dec_7f2a
+        action: ask
+        stop_reason: null
+        candidates:
+          - rank: 1
+            question_id: q_budget
+            text: Quel budget souhaitez-vous consacrer au canapé ?
+            type: open
+            choices: []
+            target_ids: [annual_budget]
+          - rank: 2
+            question_id: q_delai
+            text: À quelle période souhaitez-vous être livré ?
+            type: single_choice
+            choices:
+              - choice_id: choice_1m
+                label: Dans le mois
+              - choice_id: choice_3m
+                label: Dans les trois mois
+              - choice_id: choice_later
+                label: Plus tard
+            target_ids: [delivery_window]
+        progress:
+          objective:
+            computed_status: in_progress
+            progress: 0.34
+            client_override: null
+            effective_status: in_progress
+          sub_objectives:
+            - id: so_besoin
+              order_position: 0
+              completion_role: blocking
+              computed_status: covered
+              progress: 1
+              client_override: null
+              effective_status: covered
+            - id: so_budget
+              order_position: 1
+              completion_role: blocking
+              computed_status: in_progress
+              progress: 0.15
+              client_override: null
+              effective_status: in_progress
+            - id: so_livraison
+              order_position: 2
+              completion_role: contributing
+              computed_status: not_started
+              progress: 0
+              client_override: null
+              effective_status: not_started
+        turn_count: 2
+        turns_remaining: 8
+        warnings: []
+        degraded: false
+        degraded_reasons: []
+        versions:
+          state_version: 4
+          engine_version: 1.0.0
+          api_version: '1.0'
+
+    DecisionApresMaxTurns:
+      summary: La limite de tours est dépassée ; NBQ propose encore, l'appelant décide
+      value:
+        request_id: req_1003
+        session_id: ses_01J8Z
+        decision_id: dec_8c11
+        action: ask
+        stop_reason: null
+        candidates:
+          - rank: 1
+            question_id: q_delai
+            text: À quelle période souhaitez-vous être livré ?
+            type: single_choice
+            choices:
+              - choice_id: choice_1m
+                label: Dans le mois
+              - choice_id: choice_3m
+                label: Dans les trois mois
+              - choice_id: choice_later
+                label: Plus tard
+            target_ids: [delivery_window]
+        progress:
+          objective:
+            computed_status: in_progress
+            progress: 0.86
+            client_override: null
+            effective_status: in_progress
+          sub_objectives:
+            - id: so_besoin
+              order_position: 0
+              completion_role: blocking
+              computed_status: covered
+              progress: 1
+              client_override: null
+              effective_status: covered
+            - id: so_budget
+              order_position: 1
+              completion_role: blocking
+              computed_status: covered
+              progress: 1
+              client_override: null
+              effective_status: covered
+            - id: so_livraison
+              order_position: 2
+              completion_role: contributing
+              computed_status: in_progress
+              progress: 0.4
+              client_override: null
+              effective_status: in_progress
+        turn_count: 10
+        turns_remaining: 0
+        warnings: [max_turns_reached]
+        degraded: false
+        degraded_reasons: []
+        versions:
+          state_version: 21
+          engine_version: 1.0.0
+          api_version: '1.0'
+
+    ArretSansQuestion:
+      summary: Aucune question identifiable ne subsiste après les exclusions dures
+      value:
+        request_id: req_1004
+        session_id: ses_01J8Z
+        decision_id: null
+        action: stop
+        stop_reason: no_question_available
+        candidates: []
+        progress:
+          objective:
+            computed_status: covered
+            progress: 1
+            client_override: null
+            effective_status: covered
+          sub_objectives:
+            - id: so_besoin
+              order_position: 0
+              completion_role: blocking
+              computed_status: covered
+              progress: 1
+              client_override: null
+              effective_status: covered
+            - id: so_budget
+              order_position: 1
+              completion_role: blocking
+              computed_status: covered
+              progress: 1
+              client_override: null
+              effective_status: covered
+            - id: so_livraison
+              order_position: 2
+              completion_role: contributing
+              computed_status: not_started
+              progress: 0
+              client_override:
+                status: excluded
+                updated_at: '2026-09-01T09:31:00Z'
+              effective_status: excluded
+        turn_count: 12
+        turns_remaining: 0
+        warnings: [objective_achieved, max_turns_reached]
+        degraded: false
+        degraded_reasons: []
+        versions:
+          state_version: 25
+          engine_version: 1.0.0
+          api_version: '1.0'
+
+    ConfigurationPubliee:
+      summary: Configuration active d'un NBQ de qualification mobilier
+      value:
+        request_id: req_1005
+        state: published
+        configuration_version: cfg_00013
+        draft_revision: null
+        published_at: '2026-08-28T14:02:00Z'
+        objective:
+          name: Qualifier un projet de canapé
+          description: Comprendre le besoin, le budget et le délai avant de recommander un produit.
+          qualification_level: balanced
+          max_turns: 10
+          candidates_per_call: 3
+          order_strength: 0.35
+        sub_objectives:
+          - id: so_besoin
+            name: Besoin et usage
+            order_position: 0
+            completion_role: blocking
+          - id: so_budget
+            name: Budget
+            order_position: 1
+            completion_role: blocking
+          - id: so_livraison
+            name: Délai de livraison
+            order_position: 2
+            completion_role: contributing
+        success_informations:
+          - id: annual_budget
+            label: Budget envisagé
+            primary_question_id: q_budget
+            schema:
+              type: number
+              minimum: 0
+          - id: delivery_window
+            label: Fenêtre de livraison souhaitée
+            primary_question_id: q_delai
+            schema:
+              type: string
+              enum: [dans_le_mois, trois_mois, plus_tard]
+        questions:
+          - id: q_style
+            text: Quel style de canapé recherchez-vous ?
+            type: single_choice
+            sub_objective_id: so_besoin
+            active: true
+            choices:
+              - id: choice_contemporain
+                label: Contemporain
+              - id: choice_scandinave
+                label: Scandinave
+              - id: choice_classique
+                label: Classique
+          - id: q_budget
+            text: Quel budget souhaitez-vous consacrer au canapé ?
+            type: open
+            sub_objective_id: so_budget
+            active: true
+            choices: []
+          - id: q_delai
+            text: À quelle période souhaitez-vous être livré ?
+            type: single_choice
+            sub_objective_id: so_livraison
+            active: true
+            choices:
+              - id: choice_1m
+                label: Dans le mois
+                maps_to_value: dans_le_mois
+              - id: choice_3m
+                label: Dans les trois mois
+                maps_to_value: trois_mois
+              - id: choice_later
+                label: Plus tard
+                maps_to_value: plus_tard
+
+    PageDeQuestions:
+      summary: Première page du corpus publié
+      value:
+        request_id: req_1006
+        state: published
+        total: 3
+        next_cursor: null
+        questions:
+          - id: q_style
+            text: Quel style de canapé recherchez-vous ?
+            type: single_choice
+            sub_objective_id: so_besoin
+            active: true
+            choices:
+              - id: choice_contemporain
+                label: Contemporain
+              - id: choice_scandinave
+                label: Scandinave
+              - id: choice_classique
+                label: Classique
+          - id: q_budget
+            text: Quel budget souhaitez-vous consacrer au canapé ?
+            type: open
+            sub_objective_id: so_budget
+            active: true
+            choices: []
