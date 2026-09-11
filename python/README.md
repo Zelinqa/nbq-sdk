@@ -1,87 +1,29 @@
 # NBQ Python SDK
 
-The official Python client for the [Zelinqa NBQ API](https://docs.zelinqa.ai).
+Typed Python client for the hosted NBQ API.
 
-NBQ selects the next best question for a conversation from a customer-configured question
-bank. This package is a typed HTTP client; the scoring algorithm remains in the hosted NBQ
-Engine.
+> The current implementation is the legacy 0.9 client. Do not use it for a new
+> V1 integration or publish it as V1 until the session contract and live staging
+> tests are complete.
 
-> The SDK is currently beta. Its public surface follows the deployed `/v1` runtime API.
+## V1 target surface
 
-## Installation
+- create a session;
+- send the previous answer and request the next question;
+- read public session state and events;
+- send final feedback;
+- expose typed V1 errors, `request_id`, idempotency and retry behavior.
+
+## Development
+
+From the repository root:
 
 ```bash
-pip install nbq
+uv sync
+uv run pytest
+uv run ruff check .
+uv run mypy python/src
 ```
 
-## Synchronous client
-
-```python
-from nbq import Message, NBQClient
-
-with NBQClient(api_key="nbq_live_...") as client:
-    result = client.next_question(
-        session_id="conversation-123",
-        conversation_history=[
-            Message(role="user", content="We receive about 200 leads per month."),
-        ],
-    )
-
-    if result.next_question is not None:
-        print(result.next_question.text)
-```
-
-Keep the same `session_id` for the entire conversation and use a new one for each new
-conversation. Send every question actually asked in `answered_question_ids` on subsequent
-calls.
-
-## Asynchronous client
-
-```python
-from nbq import AsyncNBQClient, Message
-
-async with AsyncNBQClient(api_key="nbq_live_...") as client:
-    result = await client.next_question(
-        session_id="conversation-123",
-        conversation_history=[
-            Message(role="user", content="We receive about 200 leads per month."),
-        ],
-        answered_question_ids=["q_company_size"],
-    )
-```
-
-## Report an outcome
-
-```python
-conversion = client.report_conversion(
-    session_id="conversation-123",
-    outcome="lead",
-    metadata={"source": "website"},
-)
-print(conversion.conversion_id)
-```
-
-The SDK automatically adds an idempotency key to writes. You can provide your own key when
-the same business operation may be retried outside the SDK process.
-
-## Configuration
-
-```python
-client = NBQClient(
-    api_key="nbq_live_...",
-    base_url="https://api.zelinqa.ai",
-    timeout=10.0,
-    max_retries=2,
-)
-```
-
-Do not expose the runtime API key in browser or mobile code. Call NBQ from a trusted backend.
-
-## Support
-
-Log the `request_id` returned by NBQ when contacting support. Do not include API keys or
-conversation content in bug reports.
-
-## License
-
-Apache License 2.0.
+The client is intended for trusted backend environments. API keys must come from
+environment/secret management and must never appear in logs or exceptions.
