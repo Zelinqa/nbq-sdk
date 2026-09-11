@@ -1,7 +1,14 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.2.0/schema.json",
   "files": {
-    "includes": ["typescript/**/*.ts", "scripts/**/*.mjs"]
+    "includes": [
+      "typescript/**/*.ts",
+      "!typescript/src/generated/**",
+      "!typescript/dist/**",
+      "scripts/**/*.mjs",
+      "vitest.config.ts",
+      "vitest.live.config.ts"
+    ]
   },
   "formatter": {
     "enabled": true,
