@@ -1,88 +1,58 @@
 # NBQ SDKs
 
-Official open-source SDKs for the [Zelinqa NBQ API](https://docs.zelinqa.ai).
+Open-source Python and TypeScript clients for the Zelinqa NBQ API.
 
-NBQ selects the next best question for a conversation from a customer-configured question
-bank. This repository contains typed API clients only. The hosted NBQ Engine, its scoring
-algorithm, prompts, and infrastructure remain private.
+## Current status
 
-## SDKs
+The code currently reflects the earlier stateless 0.9 contract. It is kept for
+reference but must not be presented as the V1 integration path. No external
+customer needs a migration guide.
 
-| Language | Package | Status |
-|---|---|---|
-| Python | [`nbq`](./python) | Beta |
-| TypeScript | [`@zelinqa/nbq`](#typescript-quick-start) | Beta |
+The next release will be generated/aligned from
+`nbq-engine/openapi/nbq-v1.openapi.yaml` and use the stateful session flow:
 
-## Python quick start
+```text
+create session -> request next question -> read events/state -> send feedback
+```
+
+Do not publish a V1 package until both languages pass the same contract tests
+against staging with real, temporary runtime keys.
+
+## Repository
+
+```text
+python/       Python client and tests
+typescript/   TypeScript client and tests
+scripts/      version consistency utilities
+```
+
+## Development
+
+### TypeScript
 
 ```bash
-pip install nbq
+corepack enable
+pnpm install --frozen-lockfile
+pnpm check
+pnpm build
 ```
 
-```python
-from nbq import Message, NBQClient
-
-with NBQClient(api_key="nbq_live_...") as client:
-    result = client.next_question(
-        session_id="conversation-123",
-        conversation_history=[
-            Message(role="user", content="We receive about 200 leads per month."),
-        ],
-    )
-
-    if result.next_question is not None:
-        print(result.next_question.text)
-```
-
-See the [Python SDK documentation](./python/README.md) for the full usage guide.
-
-## TypeScript quick start
-
-The TypeScript SDK supports maintained Node.js LTS releases (Node.js 22 or newer) and ships
-both ESM and CommonJS builds.
+### Python
 
 ```bash
-pnpm add @zelinqa/nbq
-```
-
-```typescript
-import { NBQClient } from "@zelinqa/nbq";
-
-const client = new NBQClient({
-  apiKey: process.env.NBQ_API_KEY!,
-});
-
-const result = await client.nextQuestion({
-  sessionId: "conversation-123",
-  conversationHistory: [
-    { role: "user", content: "We receive about 200 leads per month." },
-  ],
-});
-
-if (result.nextQuestion) {
-  console.log(result.nextQuestion.text);
-}
-```
-
-The client validates the public API limits before sending, creates idempotency keys, retries
-temporary failures, respects `Retry-After`, and exposes typed API errors. You can configure
-`baseUrl`, `timeoutMs`, `maxRetries`, and a custom Fetch implementation in the constructor.
-
-Report the final business outcome using the same conversation identifier:
-
-```typescript
-await client.reportConversion({
-  sessionId: "conversation-123",
-  outcome: "lead",
-  metadata: { source: "website" },
-});
+uv sync
+uv run pytest
+uv run ruff check .
+uv run mypy python/src
 ```
 
 ## Security
 
-Never expose an NBQ runtime API key in browser or mobile code. Both SDKs are intended for
-trusted backend environments. Report vulnerabilities according to [SECURITY.md](./SECURITY.md).
+The SDKs are server-side clients. Never embed an NBQ API key in browser or
+mobile code. Errors and support reports may include `request_id`, never the key
+or full conversation content.
 
-## License
+## Publishing
 
-Apache License 2.0. See [LICENSE](./LICENSE).
+Package versions are immutable. Publishing to PyPI/npm is a manual release step
+after staging acceptance, bilingual documentation and a product changelog entry.
