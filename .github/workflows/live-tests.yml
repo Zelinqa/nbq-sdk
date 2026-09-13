@@ -1,0 +1,67 @@
+name: Live tests (staging)
+
+# Manual only. These tests call the real staging API with real keys, publish a
+# configuration and consume Bedrock quota, so they must never run on a pull
+# request. Keys come from the `staging-live` environment secrets and are passed
+# to the test processes as environment variables; no step echoes them and
+# `set -x` is forbidden in this workflow.
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: 'API base URL'
+        required: false
+        default: 'https://api.zelinqa.ai'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-tests
+  cancel-in-progress: false
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    environment: staging-live
+    timeout-minutes: 45
+    env:
+      NBQ_LIVE: '1'
+      NBQ_LIVE_BASE_URL: ${{ inputs.base_url }}
+      NBQ_LIVE_RUNTIME_KEY: ${{ secrets.NBQ_LIVE_RUNTIME_KEY }}
+      NBQ_LIVE_CONFIG_READ_KEY: ${{ secrets.NBQ_LIVE_CONFIG_READ_KEY }}
+      NBQ_LIVE_CONFIG_WRITE_KEY: ${{ secrets.NBQ_LIVE_CONFIG_WRITE_KEY }}
+      NBQ_LIVE_CONFIG_PUBLISH_KEY: ${{ secrets.NBQ_LIVE_CONFIG_PUBLISH_KEY }}
+      NBQ_LIVE_CONFIG_MANAGE_KEY: ${{ secrets.NBQ_LIVE_CONFIG_MANAGE_KEY }}
+      NBQ_LIVE_REVOKED_KEY: ${{ secrets.NBQ_LIVE_REVOKED_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install Python dependencies
+        run: uv sync --group dev --locked
+
+      - name: Install TypeScript dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Python live suite
+        run: uv run pytest -m live python/tests/live
+
+      - name: TypeScript live suite
+        if: always()
+        run: pnpm test:live

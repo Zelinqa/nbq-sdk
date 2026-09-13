@@ -1,29 +1,413 @@
-# NBQ Python SDK
+# `nbq` — Python SDK for the NBQ Engine API V1
 
-Typed Python client for the hosted NBQ API.
+Official Python client for [NBQ Engine](https://docs.zelinqa.ai), the Zelinqa
+conversational qualification platform. NBQ keeps the canonical state of a
+conversation server-side and answers one question: given what this conversation
+already told you, what should be asked next?
 
-> The current implementation is the legacy 0.9 client. Do not use it for a new
-> V1 integration or publish it as V1 until the session contract and live staging
-> tests are complete.
+The SDK follows `openapi/nbq-v1.openapi.yaml`, the frozen V1 contract. Field
+names on the wire are `snake_case`, exactly as in the contract.
 
-## V1 target surface
+- Python 3.11+
+- Sync and async clients, `httpx` transport, `pydantic` v2 models
+- Fully typed (`py.typed`), strict `mypy`
 
-- create a session;
-- send the previous answer and request the next question;
-- read public session state and events;
-- send final feedback;
-- expose typed V1 errors, `request_id`, idempotency and retry behavior.
+```bash
+uv add nbq          # or: pip install nbq
+```
+
+## Two clients, two keys
+
+An NBQ key carries scopes. Studio recommends one key per job, so the SDK is
+split the same way.
+
+| Client | Scope | What it does |
+|---|---|---|
+| `NBQClient` / `AsyncNBQClient` | `runtime` | drives conversations: sessions, next question, events, feedback |
+| `NBQConfigurationClient` / `AsyncNBQConfigurationClient` | `configuration:read`, `configuration:write`, `configuration:publish` | reads the question bank, edits the draft, publishes it |
+
+```python
+from nbq import NBQClient, NBQConfigurationClient
+
+runtime = NBQClient("nbq_live_…")                  # scope runtime
+studio = NBQConfigurationClient("nbq_live_…")       # management scopes
+```
+
+### Environment variables
+
+| Variable | Used by | Default |
+|---|---|---|
+| `NBQ_API_KEY` | both clients | — |
+| `NBQ_CONFIGURATION_API_KEY` | configuration client, before `NBQ_API_KEY` | — |
+| `NBQ_BASE_URL` | both clients | `https://api.zelinqa.ai` |
+
+```python
+with NBQClient() as client:          # api_key from NBQ_API_KEY
+    ...
+```
+
+Both clients are context managers and expose `close()` (async: `aclose()`).
+Their `repr()` and `str()` never contain the key.
+
+### Constructor options
+
+```python
+NBQClient(
+    api_key=None,        # falls back to the environment
+    base_url=None,       # absolute http(s), no credentials, no query
+    timeout=30.0,        # seconds, per attempt
+    max_retries=2,
+    transport=None,      # an httpx transport, for tests
+)
+```
+
+## Runtime: one conversation
+
+### With a session handle (recommended)
+
+`start_session()` returns a `Session` that remembers `state_version` for you.
+
+```python
+from nbq import NBQClient
+
+with NBQClient() as client:
+    session = client.start_session(client_reference="crm-lead-8842", max_turns=10)
+
+    decision = session.next()                       # first turn, nothing asked yet
+    candidate = decision.candidates[0]
+    print(candidate.question_id, candidate.text, candidate.type)
+
+    # …your agent asks the question, possibly reworded, and gets an answer…
+
+    decision = session.next(
+        previous_turn={
+            "assistant_text": candidate.text,
+            "user_text": "Un canapé contemporain pour le salon, nous avons un chat.",
+        }
+    )
+    print(decision.progress.objective.effective_status, decision.turns_remaining)
+
+    # A choice question: answer with the ids, no LLM call on that path.
+    choice = decision.candidates[0]
+    if choice.choices:
+        decision = session.next(
+            previous_turn={
+                "question_id": choice.question_id,
+                "structured_answer": {"choice_ids": [choice.choices[0].choice_id]},
+            }
+        )
+
+    # Something the CRM already knows: no need to ask for it.
+    state = session.apply_events(client_updates={"data": [{"id": "annual_budget", "value": 2500}]})
+    print(state.targets["annual_budget"].status)     # confirmed
+
+    # Messages exchanged outside NBQ.
+    session.apply_events(
+        context_update={"mode": "summary", "text": "Le visiteur emménage en mars."}
+    )
+
+    session.submit_feedback(result="success", label="achat", metadata={"order_id": "SO-99120"})
+```
+
+`Session` exposes `id`, `state_version`, `state`, `pending_decision`, and
+`next()`, `apply_events()`, `refresh()`, `submit_feedback()`.
+
+After a crash, read the session back — there is no resume token to keep:
+
+```python
+session = client.resume_session("ses_01J8Z")
+assert session.pending_decision is not None          # the exact candidates, rehydrated
+decision = session.next(previous_turn={"user_text": "…"})
+```
+
+A conflict is never hidden. If another worker moved the session, `next()` raises
+`NBQStateVersionConflictError` and the handle is left untouched: you decide
+whether to replay, refresh, or give up.
+
+```python
+from nbq import NBQStateVersionConflictError
+
+try:
+    session.next(previous_turn={"user_text": "…"})
+except NBQStateVersionConflictError as error:
+    print(error.supplied_state_version, error.current_state_version)
+    session.refresh()                                # explicit, on your terms
+```
+
+### With explicit `state_version`
+
+If you keep the state yourself — a queue worker, a Lambda, a state machine —
+call the client directly and pass the version you read.
+
+```python
+state = client.create_session(client_reference="crm-lead-8842")
+version = state.versions.state_version               # 0
+
+decision = client.next("ses_01J8Z", state_version=version)
+version = decision.versions.state_version
+
+state = client.apply_events(
+    "ses_01J8Z",
+    state_version=version,
+    client_updates={"sub_objectives": [{"id": "so_livraison", "operation": "exclude"}]},
+)
+state = client.get_session("ses_01J8Z")
+client.submit_feedback("ses_01J8Z", result="partial")
+```
+
+### Async
+
+The async client has the same surface; `iter_questions` becomes an async
+iterator.
+
+```python
+from nbq import AsyncNBQClient
+
+async with AsyncNBQClient() as client:
+    session = await client.start_session()
+    decision = await session.next()
+```
+
+### Reading a decision
+
+`next()` returns a `NextResponse`. NBQ never decides for you:
+
+- `action == "ask"` → `decision_id` is set, `candidates` is non-empty, ranked, rank 1 first.
+- `action == "stop"` → no identifiable question is left; `stop_reason` says why.
+- `warnings` reports conditions that would justify stopping (`max_turns_reached`,
+  `objective_achieved`, `eligibility_exhausted_fallback`, `constraints_relaxed`)
+  while still proposing the best question available. The decision to stop is yours.
+- `degraded` / `degraded_reasons` say the turn was understood in reduced mode —
+  typically because no `user_text` was provided.
+
+No selection score, semantic evidence, embedding or prompt is ever exposed.
+
+### Constraining one call
+
+```python
+decision = session.next(
+    selection={
+        "candidate_count": 2,
+        "allowed_question_types": ["single_choice", "multiple_choice"],
+        "sub_objectives": {"ids": ["so_besoin"], "mode": "restrict"},
+    }
+)
+```
+
+## Configuration: read, edit, publish
+
+```python
+from nbq import NBQConfigurationClient
+
+with NBQConfigurationClient() as studio:
+    published = studio.get_configuration()                     # configuration:read
+    draft = studio.get_configuration(state="draft")            # needs read + write
+
+    page = studio.list_questions(sub_objective_id="so_besoin", type="single_choice", limit=50)
+    for question in studio.iter_questions(active=True):        # follows the cursor
+        print(question.id, question.text)
+
+    csv = studio.export_questions_csv()                        # raw text/csv
+    events = studio.list_audit(limit=20)                       # configuration:publish
+```
+
+`SuccessInformation` carries the collected value's JSON Schema. The contract
+calls that field `schema`, which collides with a `pydantic` attribute, so the
+Python attribute is `json_schema` and the wire name stays `schema`.
+
+```python
+print(published.success_informations[0].json_schema)           # {"type": "number", "minimum": 0}
+```
+
+### Editing the draft, then publishing
+
+Changes are applied atomically: either all of them land, or none does. Nothing
+goes live until a publication has compiled.
+
+```python
+from nbq import NBQConfigurationClient
+
+with NBQConfigurationClient() as studio:
+    draft = studio.get_configuration(state="draft")
+
+    applied = studio.apply_changes(
+        [
+            {
+                "entity": "question",
+                "operation": "create",
+                "question": {
+                    "id": "q_delivery_window",
+                    "text": "À quelle période souhaitez-vous être livré ?",
+                    "type": "single_choice",
+                    "sub_objective_id": "so_livraison",
+                    "active": True,
+                    "choices": [
+                        {"id": "choice_1m", "label": "Dans le mois", "maps_to_value": "dans_le_mois"},
+                        {"id": "choice_3m", "label": "Dans les trois mois", "maps_to_value": "trois_mois"},
+                    ],
+                },
+            },
+            {
+                "entity": "success_information",
+                "operation": "create",
+                "success_information": {
+                    "id": "delivery_window",
+                    "label": "Fenêtre de livraison souhaitée",
+                    "primary_question_id": "q_delivery_window",
+                    "schema": {"type": "string", "enum": ["dans_le_mois", "trois_mois"]},
+                },
+            },
+        ],
+        expected_draft_revision=draft.draft_revision,          # refuse to overwrite someone else
+    )
+    print(applied.applied, applied.draft_revision)
+
+    queued = studio.publish(expected_draft_revision=applied.draft_revision)
+    print(queued.compilation_id, queued.status)                # cmp_… queued
+
+    status = studio.wait_for_compilation(queued.compilation_id, poll_interval=3, timeout=900)
+    if status.status == "succeeded":
+        print("now active:", status.configuration_version)
+    else:
+        print("failed:", status.error.code, status.error.message)
+```
+
+Compilation runs outside the HTTP request: a large corpus needs several LLM
+batches. `publish()` returns as soon as the job is accepted, and the previous
+compiled version stays readable so sessions already using it can finish.
+
+`wait_for_compilation()` returns the terminal status — a failure is a normal
+outcome, so inspect `status.error` rather than catching an exception. Only
+running out of time raises `NBQCompilationTimeoutError`. Typed models can be
+passed instead of dicts:
+
+```python
+from nbq import QuestionChange, QuestionPatch
+
+studio.apply_changes([QuestionChange(operation="update", question=QuestionPatch(id="q_style", active=False))])
+```
+
+## Errors
+
+Every exception derives from `NBQError`. The business envelope `code` decides
+the type first; the HTTP status decides when the body is not a V1 envelope.
+
+| Raised | Status / code | Notable attributes |
+|---|---|---|
+| `NBQAuthenticationError` | `401` (no `Authorization` header), or `403` with no envelope — invalid, revoked, expired, or missing the scope the gateway checks for that route | `status_code` |
+| `NBQInsufficientScopeError` | `403` `insufficient_scope` — the service-side check, today only `?state=draft` | `required_scopes`, `granted_scopes` |
+| `NBQUnknownSessionError` | `404` `unknown_session` | `details["session_id"]` |
+| `NBQUnknownConfigurationError` | `404` `unknown_configuration` | |
+| `NBQUnknownCompilationError` | `404` `unknown_compilation` | |
+| `NBQStateVersionConflictError` | `409` `state_version_conflict` | `supplied_state_version`, `current_state_version` |
+| `NBQIdempotencyKeyReusedError` | `409` `idempotency_key_reused` | `idempotency_key` |
+| `NBQCompilationInProgressError` | `409` `compilation_in_progress` | `compilation_id`, `status` |
+| `NBQCompiledArtifactUnavailableError` | `410` `compiled_artifact_unavailable` | |
+| `NBQInvalidPreviousTurnError` | `422` `invalid_previous_turn` | |
+| `NBQConstraintNoMatchError` | `422` `constraint_no_match` | |
+| `NBQInvalidChoiceError` | `422` `invalid_choice` | |
+| `NBQConfigurationValidationError` | `422` `configuration_validation_failed` | `issues: list[ConfigurationIssue]` |
+| `NBQRateLimitError` | `429` | `retry_after` |
+| `NBQIdempotencyContentionError` | `503` `idempotency_contention` | retried first, raised only when retries run out |
+| `NBQServerError` | other `5xx` | |
+| `NBQAPIError` | anything else | base of all of the above |
+| `NBQConnectionError` | network failure or timeout, after every retry | |
+| `NBQCompilationTimeoutError` | `wait_for_compilation` ran out of time | `compilation_id`, `timeout` |
+
+`NBQAPIError` always carries `status_code`, `code`, `message`, `request_id`,
+`details` and `retry_after`. `str(error)` reads
+`"<code or status>: <message> (request_id=…)"` — quote the `request_id` when
+you contact Zelinqa support.
+
+Note that a `403` from the gateway is deliberately not split further: the
+gateway answers the same opaque body for a revoked key and for a key missing a
+route's scope, so the SDK does not pretend to know which it was.
+
+```python
+from nbq import NBQAPIError, NBQConfigurationValidationError
+
+try:
+    studio.publish()
+except NBQConfigurationValidationError as error:
+    for issue in error.issues:
+        print(issue.code, issue.entity, issue.entity_id, issue.message)
+except NBQAPIError as error:
+    print(error.status_code, error.code, error.request_id)
+```
+
+`ConfigurationIssue.code` is a plain string on purpose: the contract does not
+freeze that catalogue. Display `message`, and never assume you know every code.
+
+## Retries and idempotency
+
+Every mutation sends an `Idempotency-Key`. If you do not supply one, the SDK
+generates a UUID v4 **once per logical call** and reuses it across that call's
+retries — a retry can therefore never double a turn, an outcome, a feedback or
+a publication. Supply your own when you want the replay to be idempotent across
+processes too:
+
+```python
+session.next(previous_turn={"user_text": "…"}, idempotency_key=f"next-{session.id}-turn-4")
+```
+
+Same key and same body replays the original response. Same key with a different
+body raises `NBQIdempotencyKeyReusedError`.
+
+Retried, up to `max_retries` (default 2), with exponential backoff (0.5 s, 1 s,
+2 s… capped at 10 s, jittered): connection errors and timeouts, `429`, `500`,
+`502`, `503`, `504`, and the `idempotency_contention` envelope. `Retry-After`
+(seconds or HTTP date) and `details.retry_after_seconds` win over the backoff,
+clamped to 30 s. `GET` requests are retried the same way. `400`, `401`, `403`,
+`404`, `409`, `410` and `422` are never retried. `timeout` applies per attempt,
+so the worst case is roughly `timeout × (max_retries + 1)` plus the backoff.
+
+## Security
+
+**These clients belong in a backend.** An NBQ key grants access to your whole
+question bank and to every session of your tenant. Never ship one to a browser,
+a mobile app or any client you do not control; proxy NBQ through your own
+service instead.
+
+- The key lives in the `httpx` client and nowhere else: no exception, message,
+  `repr`, log line or returned value contains it.
+- Use separate keys per scope. A runtime key must not be able to publish.
+- The tenant is never sent by the client: the gateway authorizer resolves the
+  key and injects the tenant, the NBQ and the scopes. Any `x-tenant-id`,
+  `x-nbq-id` or `x-scopes` header you send is overwritten.
+- `initial_history` is consumed once in memory to build the initial state. It
+  is never persisted, never logged, never returned.
+- Keep keys out of the repository. `.env*` and `*.local` are git-ignored.
 
 ## Development
 
-From the repository root:
-
 ```bash
-uv sync
-uv run pytest
-uv run ruff check .
+uv sync --group dev
+uv run ruff check python/src python/tests
+uv run ruff format --check python/src python/tests
 uv run mypy python/src
+uv run pytest                     # live tests excluded by default
 ```
 
-The client is intended for trusted backend environments. API keys must come from
-environment/secret management and must never appear in logs or exceptions.
+The live suite runs against real staging keys and is opt-in:
+
+```bash
+NBQ_LIVE=1 uv run pytest -m live python/tests/live
+```
+
+It needs `NBQ_LIVE_RUNTIME_KEY`, `NBQ_LIVE_CONFIG_READ_KEY`,
+`NBQ_LIVE_CONFIG_WRITE_KEY`, `NBQ_LIVE_CONFIG_PUBLISH_KEY`,
+`NBQ_LIVE_CONFIG_MANAGE_KEY` and `NBQ_LIVE_REVOKED_KEY`, and optionally
+`NBQ_LIVE_BASE_URL`. In CI it only runs from the manual `live-tests` workflow,
+with secrets from the `staging-live` environment.
+
+## Changelog
+
+### 1.0.0
+
+- First V1 release: sessions, next question, events, session read, feedback,
+  and the full configuration surface including publication.
+- The 0.9 routes are removed from the SDK.
+
+## License
+
+Apache-2.0. See [LICENSE](../LICENSE).

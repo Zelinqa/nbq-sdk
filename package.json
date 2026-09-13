@@ -1,7 +1,7 @@
 {
   "name": "@zelinqa/nbq",
-  "version": "0.9.0",
-  "description": "Official TypeScript SDK for the Zelinqa Next Best Question API",
+  "version": "1.0.0",
+  "description": "Official TypeScript SDK for the Zelinqa NBQ Engine V1 API",
   "license": "Apache-2.0",
   "author": {
     "name": "Zelinqa",
@@ -20,6 +20,7 @@
     "nbq",
     "next-best-question",
     "conversational-ai",
+    "qualification",
     "zelinqa"
   ],
   "type": "module",
@@ -39,7 +40,8 @@
     }
   },
   "files": [
-    "typescript/dist"
+    "typescript/dist",
+    "typescript/README.md"
   ],
   "sideEffects": false,
   "engines": {
@@ -53,9 +55,11 @@
     "build": "tsup typescript/src/index.ts --format esm,cjs --dts --clean --sourcemap --target node22 --out-dir typescript/dist",
     "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm check:versions",
     "check:versions": "node scripts/check-versions.mjs",
-    "lint": "biome check typescript/src typescript/tests scripts",
+    "generate:types": "openapi-typescript openapi/nbq-v1.openapi.yaml -o typescript/src/generated/openapi.d.ts --alphabetize && node scripts/normalize-generated-types.mjs",
+    "lint": "biome check typescript/src typescript/tests scripts vitest.config.ts vitest.live.config.ts",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "test:live": "vitest run --config vitest.live.config.ts",
     "typecheck": "tsc --noEmit -p typescript/tsconfig.json",
     "changeset": "changeset",
     "version-packages": "changeset version && node scripts/sync-python-version.mjs"
@@ -65,8 +69,10 @@
     "@changesets/cli": "^2.29.0",
     "@types/node": "^22.0.0",
     "@vitest/coverage-v8": "^3.2.0",
+    "openapi-typescript": "^7.13.0",
     "tsup": "^8.5.0",
     "typescript": "^5.9.0",
-    "vitest": "^3.2.0"
+    "vitest": "^3.2.0",
+    "yaml": "^2.9.0"
   }
 }

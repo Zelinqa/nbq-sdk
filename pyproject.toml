@@ -1,6 +1,6 @@
 [project]
 name = "nbq"
-version = "0.9.0"
+version = "1.0.0"
 description = "Official Python SDK for the Zelinqa Next Best Question API"
 readme = "python/README.md"
 requires-python = ">=3.11"
@@ -9,14 +9,16 @@ license = "Apache-2.0"
 license-files = ["LICENSE"]
 keywords = ["nbq", "next-best-question", "conversational-ai", "zelinqa"]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Typing :: Typed",
 ]
-dependencies = ["httpx>=0.27,<1"]
+dependencies = ["httpx>=0.27,<1", "pydantic>=2.7,<3"]
 
 [project.urls]
 Documentation = "https://docs.zelinqa.ai"
@@ -39,14 +41,17 @@ dev = [
     "mypy>=1.10",
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
+    "pyyaml>=6.0",
     "ruff>=0.6.0",
     "twine>=6.0",
+    "types-PyYAML>=6.0",
 ]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["python/tests"]
-addopts = "-ra -q --strict-markers"
+markers = ["live: real staging tests, opt-in via NBQ_LIVE=1"]
+addopts = "-ra -q --strict-markers -m 'not live'"
 
 [tool.ruff]
 line-length = 100

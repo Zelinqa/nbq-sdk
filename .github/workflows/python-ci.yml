@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'python/**'
+      - 'openapi/**'
       - 'pyproject.toml'
       - 'uv.lock'
       - '.github/workflows/python-ci.yml'
@@ -11,6 +12,7 @@ on:
     branches: [main]
     paths:
       - 'python/**'
+      - 'openapi/**'
       - 'pyproject.toml'
       - 'uv.lock'
       - '.github/workflows/python-ci.yml'
@@ -38,10 +40,15 @@ jobs:
       - name: Lint
         run: uv run ruff check python/src python/tests
 
+      - name: Format
+        run: uv run ruff format --check python/src python/tests
+
       - name: Type check
         run: uv run mypy python/src
 
       - name: Test
+        # The `live` marker is excluded by the addopts of pyproject.toml: the
+        # live suite runs only from the manual live-tests workflow.
         run: uv run pytest
 
       - name: Build source and wheel distributions

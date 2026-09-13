@@ -34,3 +34,6 @@ package-artifacts/
 *.swp
 *.swo
 .DS_Store
+
+# Local machine-specific files
+*.local
