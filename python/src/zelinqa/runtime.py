@@ -28,6 +28,7 @@ from ._http import (
     validate_max_retries,
     validate_timeout,
 )
+from .answers import answer_turn
 from .models import (
     ClientUpdates,
     ContextUpdate,
@@ -40,13 +41,14 @@ from .models import (
     NextResponse,
     PendingDecisionView,
     PreviousTurn,
+    QuestionOutcome,
     SelectionOptions,
     SessionCreateRequest,
     SessionEventsRequest,
     SessionStateResponse,
 )
 
-__all__ = ["AsyncNBQClient", "AsyncSession", "NBQClient", "Session"]
+__all__ = ["AsyncSession", "AsyncZelinqaClient", "Session", "ZelinqaClient"]
 
 _SESSIONS = "/v1/sessions"
 
@@ -135,11 +137,11 @@ def _session_path(session_id: str, suffix: str = "") -> str:
     return f"{_SESSIONS}/{path_segment(session_id)}{suffix}"
 
 
-class NBQClient:
+class ZelinqaClient:
     """Blocking client for the NBQ runtime routes.
 
-    ``api_key`` falls back to the ``NBQ_API_KEY`` environment variable and
-    ``base_url`` to ``NBQ_BASE_URL``, then ``https://api.zelinqa.ai``.
+    ``api_key`` falls back to the ``ZELINQA_API_KEY`` environment variable and
+    ``base_url`` to ``ZELINQA_BASE_URL``, then ``https://api.zelinqa.ai``.
     ``transport`` exists for tests: pass an ``httpx.MockTransport``.
     """
 
@@ -162,9 +164,9 @@ class NBQClient:
         )
 
     def __repr__(self) -> str:
-        return f"NBQClient(base_url={self._base_url!r})"
+        return f"ZelinqaClient(base_url={self._base_url!r})"
 
-    def __enter__(self) -> NBQClient:
+    def __enter__(self) -> ZelinqaClient:
         return self
 
     def __exit__(
@@ -319,12 +321,12 @@ class Session:
     """Handle over one session that remembers ``state_version``.
 
     Every response updates the tracked version. A ``state_version_conflict`` is
-    raised as :class:`~nbq.errors.NBQStateVersionConflictError` and the handle
+    raised as :class:`~nbq.errors.ZelinqaStateVersionConflictError` and the handle
     is left untouched: refreshing on the caller's behalf would hide the fact
     that somebody else moved the session. Call :meth:`refresh` to resynchronise.
     """
 
-    def __init__(self, client: NBQClient, state: SessionStateResponse) -> None:
+    def __init__(self, client: ZelinqaClient, state: SessionStateResponse) -> None:
         self._client = client
         self._state: SessionStateResponse | None = state
         self._state_version = state.versions.state_version
@@ -398,6 +400,34 @@ class Session:
             )
         )
 
+    def answer(
+        self,
+        user_text: str | None = None,
+        *,
+        candidate_rank: int = 1,
+        choice_labels: Sequence[str] | None = None,
+        free_text: str | None = None,
+        outcome: QuestionOutcome | None = None,
+        assistant_text: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> NextResponse:
+        """Answer a pending candidate using text/labels, never technical identifiers.
+
+        Reports the candidate actually asked (rank 1 by default). Does not mark
+        free-text answers complete: the API assesses them unless outcome is explicit.
+        Like all session mutations, call sequentially; conflicts are not replayed.
+        """
+        turn = answer_turn(
+            self._pending_decision,
+            user_text=user_text,
+            candidate_rank=candidate_rank,
+            choice_labels=choice_labels,
+            free_text=free_text,
+            outcome=outcome,
+            assistant_text=assistant_text,
+        )
+        return self.next(previous_turn=turn, idempotency_key=idempotency_key)
+
     def apply_events(
         self,
         *,
@@ -442,8 +472,8 @@ class Session:
         )
 
 
-class AsyncNBQClient:
-    """Async client for the NBQ runtime routes. Same surface as :class:`NBQClient`."""
+class AsyncZelinqaClient:
+    """Async client for the NBQ runtime routes. Same surface as :class:`ZelinqaClient`."""
 
     def __init__(
         self,
@@ -464,9 +494,9 @@ class AsyncNBQClient:
         )
 
     def __repr__(self) -> str:
-        return f"AsyncNBQClient(base_url={self._base_url!r})"
+        return f"AsyncZelinqaClient(base_url={self._base_url!r})"
 
-    async def __aenter__(self) -> AsyncNBQClient:
+    async def __aenter__(self) -> AsyncZelinqaClient:
         return self
 
     async def __aexit__(
@@ -623,7 +653,7 @@ class AsyncNBQClient:
 class AsyncSession:
     """Async handle over one session. Same semantics as :class:`Session`."""
 
-    def __init__(self, client: AsyncNBQClient, state: SessionStateResponse) -> None:
+    def __init__(self, client: AsyncZelinqaClient, state: SessionStateResponse) -> None:
         self._client = client
         self._state: SessionStateResponse | None = state
         self._state_version = state.versions.state_version
@@ -696,6 +726,29 @@ class AsyncSession:
                 idempotency_key=idempotency_key,
             )
         )
+
+    async def answer(
+        self,
+        user_text: str | None = None,
+        *,
+        candidate_rank: int = 1,
+        choice_labels: Sequence[str] | None = None,
+        free_text: str | None = None,
+        outcome: QuestionOutcome | None = None,
+        assistant_text: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> NextResponse:
+        """Async equivalent of Session.answer; await each mutation sequentially."""
+        turn = answer_turn(
+            self._pending_decision,
+            user_text=user_text,
+            candidate_rank=candidate_rank,
+            choice_labels=choice_labels,
+            free_text=free_text,
+            outcome=outcome,
+            assistant_text=assistant_text,
+        )
+        return await self.next(previous_turn=turn, idempotency_key=idempotency_key)
 
     async def apply_events(
         self,

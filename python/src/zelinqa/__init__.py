@@ -1,12 +1,12 @@
 """Official Python SDK for the Zelinqa NBQ Engine API V1.
 
-Two clients, one per scope family: :class:`NBQClient` drives conversations with
-a ``runtime`` key, :class:`NBQConfigurationClient` reads and publishes the
+Two clients, one per scope family: :class:`ZelinqaClient` drives conversations with
+a ``runtime`` key, :class:`ZelinqaConfigurationClient` reads and publishes the
 question bank with a management key. Both have an async twin.
 
-    from nbq import NBQClient
+    from zelinqa import ZelinqaClient
 
-    with NBQClient() as client:              # NBQ_API_KEY from the environment
+    with ZelinqaClient() as client:              # ZELINQA_API_KEY from the environment
         session = client.start_session(client_reference="crm-lead-8842")
         decision = session.next()
         print(decision.candidates[0].text)
@@ -16,34 +16,35 @@ backend.
 """
 
 from ._version import __version__
+from .answers import answer_turn
 from .configuration import (
-    AsyncNBQConfigurationClient,
-    NBQConfigurationClient,
+    AsyncZelinqaConfigurationClient,
+    ZelinqaConfigurationClient,
 )
 from .errors import (
-    NBQAPIError,
-    NBQAuthenticationError,
-    NBQCompilationInProgressError,
-    NBQCompilationTimeoutError,
-    NBQCompiledArtifactUnavailableError,
-    NBQConfigurationValidationError,
-    NBQConflictError,
-    NBQConnectionError,
-    NBQConstraintNoMatchError,
-    NBQError,
-    NBQIdempotencyContentionError,
-    NBQIdempotencyKeyReusedError,
-    NBQInsufficientScopeError,
-    NBQInvalidChoiceError,
-    NBQInvalidPreviousTurnError,
-    NBQNotFoundError,
-    NBQRateLimitError,
-    NBQServerError,
-    NBQStateVersionConflictError,
-    NBQUnknownCompilationError,
-    NBQUnknownConfigurationError,
-    NBQUnknownSessionError,
-    NBQValidationError,
+    ZelinqaAPIError,
+    ZelinqaAuthenticationError,
+    ZelinqaCompilationInProgressError,
+    ZelinqaCompilationTimeoutError,
+    ZelinqaCompiledArtifactUnavailableError,
+    ZelinqaConfigurationValidationError,
+    ZelinqaConflictError,
+    ZelinqaConnectionError,
+    ZelinqaConstraintNoMatchError,
+    ZelinqaError,
+    ZelinqaIdempotencyContentionError,
+    ZelinqaIdempotencyKeyReusedError,
+    ZelinqaInsufficientScopeError,
+    ZelinqaInvalidChoiceError,
+    ZelinqaInvalidPreviousTurnError,
+    ZelinqaNotFoundError,
+    ZelinqaRateLimitError,
+    ZelinqaServerError,
+    ZelinqaStateVersionConflictError,
+    ZelinqaUnknownCompilationError,
+    ZelinqaUnknownConfigurationError,
+    ZelinqaUnknownSessionError,
+    ZelinqaValidationError,
 )
 from .models import (
     AuditActorType,
@@ -115,6 +116,8 @@ from .models import (
     QuestionOutcome,
     QuestionOutcomeRecord,
     QuestionPatch,
+    QuestionSelectionMode,
+    QuestionSource,
     QuestionType,
     Role,
     SelectionOptions,
@@ -148,16 +151,16 @@ from .models import (
     VersionInfo,
 )
 from .runtime import (
-    AsyncNBQClient,
     AsyncSession,
-    NBQClient,
+    AsyncZelinqaClient,
     Session,
+    ZelinqaClient,
 )
 
 __all__ = [
-    "AsyncNBQClient",
-    "AsyncNBQConfigurationClient",
     "AsyncSession",
+    "AsyncZelinqaClient",
+    "AsyncZelinqaConfigurationClient",
     "AuditActorType",
     "AuditOrigin",
     "Candidate",
@@ -202,31 +205,6 @@ __all__ = [
     "FeedbackResult",
     "InitialHistoryItem",
     "MetadataValue",
-    "NBQAPIError",
-    "NBQAuthenticationError",
-    "NBQClient",
-    "NBQCompilationInProgressError",
-    "NBQCompilationTimeoutError",
-    "NBQCompiledArtifactUnavailableError",
-    "NBQConfigurationClient",
-    "NBQConfigurationValidationError",
-    "NBQConflictError",
-    "NBQConnectionError",
-    "NBQConstraintNoMatchError",
-    "NBQError",
-    "NBQIdempotencyContentionError",
-    "NBQIdempotencyKeyReusedError",
-    "NBQInsufficientScopeError",
-    "NBQInvalidChoiceError",
-    "NBQInvalidPreviousTurnError",
-    "NBQNotFoundError",
-    "NBQRateLimitError",
-    "NBQServerError",
-    "NBQStateVersionConflictError",
-    "NBQUnknownCompilationError",
-    "NBQUnknownConfigurationError",
-    "NBQUnknownSessionError",
-    "NBQValidationError",
     "NextAction",
     "NextRequest",
     "NextResponse",
@@ -252,6 +230,8 @@ __all__ = [
     "QuestionOutcome",
     "QuestionOutcomeRecord",
     "QuestionPatch",
+    "QuestionSelectionMode",
+    "QuestionSource",
     "QuestionType",
     "Role",
     "SelectionOptions",
@@ -284,5 +264,31 @@ __all__ = [
     "TargetStatus",
     "UnsetDataUpdate",
     "VersionInfo",
+    "ZelinqaAPIError",
+    "ZelinqaAuthenticationError",
+    "ZelinqaClient",
+    "ZelinqaCompilationInProgressError",
+    "ZelinqaCompilationTimeoutError",
+    "ZelinqaCompiledArtifactUnavailableError",
+    "ZelinqaConfigurationClient",
+    "ZelinqaConfigurationValidationError",
+    "ZelinqaConflictError",
+    "ZelinqaConnectionError",
+    "ZelinqaConstraintNoMatchError",
+    "ZelinqaError",
+    "ZelinqaIdempotencyContentionError",
+    "ZelinqaIdempotencyKeyReusedError",
+    "ZelinqaInsufficientScopeError",
+    "ZelinqaInvalidChoiceError",
+    "ZelinqaInvalidPreviousTurnError",
+    "ZelinqaNotFoundError",
+    "ZelinqaRateLimitError",
+    "ZelinqaServerError",
+    "ZelinqaStateVersionConflictError",
+    "ZelinqaUnknownCompilationError",
+    "ZelinqaUnknownConfigurationError",
+    "ZelinqaUnknownSessionError",
+    "ZelinqaValidationError",
     "__version__",
+    "answer_turn",
 ]

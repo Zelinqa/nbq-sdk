@@ -12,20 +12,6 @@ from typing import Any
 
 import httpx
 import pytest
-from nbq import (
-    AsyncNBQClient,
-    AsyncSession,
-    ClientUpdates,
-    ConversationSummary,
-    NBQClient,
-    NBQStateVersionConflictError,
-    PreviousTurn,
-    SelectionOptions,
-    Session,
-    SetDataUpdate,
-    StructuredAnswer,
-)
-from nbq._version import __version__
 from spec_examples import (
     ARRET_SANS_QUESTION,
     DECISION_NORMALE,
@@ -33,6 +19,20 @@ from spec_examples import (
     operation_example,
     response_example,
 )
+from zelinqa import (
+    AsyncSession,
+    AsyncZelinqaClient,
+    ClientUpdates,
+    ConversationSummary,
+    PreviousTurn,
+    SelectionOptions,
+    Session,
+    SetDataUpdate,
+    StructuredAnswer,
+    ZelinqaClient,
+    ZelinqaStateVersionConflictError,
+)
+from zelinqa._version import __version__
 
 API_KEY = "nbq_live_test"
 BASE_URL = "https://api.example.test"
@@ -68,8 +68,8 @@ def json_response(status: int, payload: Any) -> httpx.Response:
     return httpx.Response(status, json=copy.deepcopy(payload))
 
 
-def sync_client(recorder: Recorder, **kwargs: Any) -> NBQClient:
-    return NBQClient(
+def sync_client(recorder: Recorder, **kwargs: Any) -> ZelinqaClient:
+    return ZelinqaClient(
         API_KEY,
         base_url=BASE_URL,
         max_retries=0,
@@ -78,8 +78,8 @@ def sync_client(recorder: Recorder, **kwargs: Any) -> NBQClient:
     )
 
 
-def async_client(recorder: Recorder, **kwargs: Any) -> AsyncNBQClient:
-    return AsyncNBQClient(
+def async_client(recorder: Recorder, **kwargs: Any) -> AsyncZelinqaClient:
+    return AsyncZelinqaClient(
         API_KEY,
         base_url=BASE_URL,
         max_retries=0,
@@ -105,19 +105,19 @@ async def test_async_repr_never_leaks_the_key() -> None:
 
 
 def test_api_key_falls_back_to_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("NBQ_API_KEY", "nbq_live_from_env")
-    monkeypatch.setenv("NBQ_BASE_URL", BASE_URL)
+    monkeypatch.setenv("ZELINQA_API_KEY", "nbq_live_from_env")
+    monkeypatch.setenv("ZELINQA_BASE_URL", BASE_URL)
     recorder = Recorder(json_response(201, SESSION_NEUVE))
-    with NBQClient(max_retries=0, transport=httpx.MockTransport(recorder)) as client:
+    with ZelinqaClient(max_retries=0, transport=httpx.MockTransport(recorder)) as client:
         client.create_session()
     assert recorder.last.headers["Authorization"] == "Bearer nbq_live_from_env"
     assert str(recorder.last.url).startswith(BASE_URL)
 
 
 def test_missing_api_key_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("NBQ_API_KEY", raising=False)
+    monkeypatch.delenv("ZELINQA_API_KEY", raising=False)
     with pytest.raises(ValueError, match="API key is required"):
-        NBQClient()
+        ZelinqaClient()
 
 
 @pytest.mark.parametrize(
@@ -131,7 +131,7 @@ def test_missing_api_key_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
 )
 def test_base_url_is_validated(base_url: str, match: str) -> None:
     with pytest.raises(ValueError, match=match):
-        NBQClient(API_KEY, base_url=base_url)
+        ZelinqaClient(API_KEY, base_url=base_url)
 
 
 @pytest.mark.parametrize(
@@ -140,7 +140,7 @@ def test_base_url_is_validated(base_url: str, match: str) -> None:
 )
 def test_settings_are_validated(kwargs: dict[str, Any], match: str) -> None:
     with pytest.raises(ValueError, match=match):
-        NBQClient(API_KEY, **kwargs)
+        ZelinqaClient(API_KEY, **kwargs)
 
 
 # ------------------------------------------------------------ create_session
@@ -161,7 +161,7 @@ def test_create_session_sends_headers_path_and_body() -> None:
     assert request.url.path == "/v1/sessions"
     assert request.headers["Authorization"] == f"Bearer {API_KEY}"
     assert request.headers["Idempotency-Key"] == "create-session-8842"
-    assert request.headers["User-Agent"] == f"nbq-python/{__version__}"
+    assert request.headers["User-Agent"] == f"zelinqa-python/{__version__}"
     assert request.headers["Accept"] == "application/json"
     assert request.headers["Content-Type"] == "application/json"
     assert recorder.body() == {
@@ -371,7 +371,7 @@ async def test_async_get_session() -> None:
     recorder = Recorder(json_response(200, SESSION_NEUVE))
     async with async_client(recorder) as client:
         state = await client.get_session("ses_01J8Z")
-    assert state.max_turns == 10
+    assert state.max_turns == 15
 
 
 # ----------------------------------------------------------- submit_feedback
@@ -481,7 +481,7 @@ def test_handle_never_hides_a_state_version_conflict() -> None:
     )
     with sync_client(recorder) as client:
         session = client.start_session()
-        with pytest.raises(NBQStateVersionConflictError) as captured:
+        with pytest.raises(ZelinqaStateVersionConflictError) as captured:
             session.next()
 
     assert captured.value.supplied_state_version == 7
@@ -545,7 +545,7 @@ async def test_async_resume_session_and_conflict() -> None:
     )
     async with async_client(recorder) as client:
         session = await client.resume_session("ses_01J8Z")
-        with pytest.raises(NBQStateVersionConflictError):
+        with pytest.raises(ZelinqaStateVersionConflictError):
             await session.apply_events(client_updates={"objective": {"operation": "clear"}})
     assert session.state_version == 0
 

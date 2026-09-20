@@ -22,6 +22,8 @@ export type ProgressStatus = Schemas["ProgressStatus"];
 export type QualificationLevel = Schemas["QualificationLevel"];
 export type QuestionOutcome = Schemas["QuestionOutcome"];
 export type QuestionType = Schemas["QuestionType"];
+export type QuestionSelectionMode = Schemas["QuestionSelectionMode"];
+export type QuestionSource = Schemas["QuestionSource"];
 export type SelectionWarning = Schemas["SelectionWarning"];
 export type StopReason = Schemas["StopReason"];
 export type SubObjectiveOverrideValue = Schemas["SubObjectiveOverrideValue"];
@@ -103,7 +105,7 @@ export type ErrorEnvelope = Schemas["ErrorEnvelope"];
 /** Minimal Fetch API shape the SDK depends on; inject one for tests or exotic runtimes. */
 export type Fetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
-export interface NBQClientOptions {
+export interface ZelinqaClientOptions {
   /** NBQ integration key. Required: the TypeScript SDK never reads the environment. */
   readonly apiKey: string;
   /** Absolute HTTP(S) origin. Defaults to `https://api.zelinqa.ai`. */
@@ -151,11 +153,11 @@ export interface ListAuditQuery {
   readonly resource_type?: ConfigurationAuditResourceType;
 }
 
-/** Options of `NBQConfigurationClient.waitForCompilation`. */
+/** Options of `ZelinqaConfigurationClient.waitForCompilation`. */
 export interface WaitForCompilationOptions {
   /** Delay between two status reads. Defaults to 2000 ms. */
   readonly pollIntervalMs?: number;
-  /** Overall budget before `NBQCompilationTimeoutError`. Defaults to 900000 ms. */
+  /** Overall budget before `ZelinqaCompilationTimeoutError`. Defaults to 900000 ms. */
   readonly timeoutMs?: number;
   /** Caller-owned cancellation signal. */
   readonly signal?: AbortSignal;

@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
 const pyproject = await readFile(new URL("../pyproject.toml", import.meta.url), "utf8");
 const pythonVersion = await readFile(
-  new URL("../python/src/nbq/_version.py", import.meta.url),
+  new URL("../python/src/zelinqa/_version.py", import.meta.url),
   "utf8",
 );
 const typescriptVersion = await readFile(

@@ -1,8 +1,8 @@
-# `@zelinqa/nbq` — TypeScript SDK for NBQ Engine V1
+# `@zelinqa/sdk` — TypeScript SDK for Zelinqa Engine V1
 
-Official TypeScript client for the [NBQ Engine](https://docs.zelinqa.ai) V1 public
-API (`https://api.zelinqa.ai`). NBQ Engine decides the **next best question** to
-ask in a conversation: you configure objectives and a question bank in NBQ Studio,
+Official TypeScript client for the [Zelinqa Engine](https://docs.zelinqa.ai) V1 public
+API (`https://api.zelinqa.ai`). Zelinqa Engine decides the **next best question** to
+ask in a conversation: you configure objectives and a question bank in Zelinqa Studio,
 publish an immutable version, and the API picks the next question from the session
 state it keeps for you.
 
@@ -11,13 +11,20 @@ the OpenAPI contract. Node ≥ 22.
 
 ## Install
 
+**Zelinqa 1.0.0 is prepared, not yet published.** This is a new package name,
+not an automatic upgrade of `@zelinqa/nbq` 0.9. Use
+`await session.answer({ userText: "the actual reply" })` after `session.next()`.
+Choices use `{ choiceLabels: ["Exact label"] }`. Technical IDs stay in the handle;
+see the root README for restart/concurrency rules.
+
+
 ```bash
-pnpm add @zelinqa/nbq   # or npm install / yarn add
+pnpm add @zelinqa/sdk   # or npm install / yarn add
 ```
 
 ## Security — backend only
 
-An NBQ key is a bearer credential scoped to one tenant. **Never ship it to a
+An Zelinqa key is a bearer credential scoped to one tenant. **Never ship it to a
 browser, a mobile bundle or any client-side code**, and never log it. The SDK
 keeps the key in a private field, writes it to exactly one place — the
 `Authorization` header — and never puts it in an error, a message, a stack trace
@@ -25,21 +32,21 @@ or the output of `toString()`.
 
 Use separate keys with least-privilege scopes: `runtime` for conversations,
 `configuration:read` / `configuration:write` / `configuration:publish` for
-management. NBQ Studio shows a raw key only once.
+management. Zelinqa Studio shows a raw key only once.
 
 ## Two clients
 
 | Client | Scope | What it does |
 |---|---|---|
-| `NBQClient` | `runtime` | create a session, get the next question, apply events, read the state, record the outcome |
-| `NBQConfigurationClient` | `configuration:*` | read the corpus, edit the draft, publish, follow the compilation, read the audit log |
+| `ZelinqaClient` | `runtime` | create a session, get the next question, apply events, read the state, record the outcome |
+| `ZelinqaConfigurationClient` | `configuration:*` | read the corpus, edit the draft, publish, follow the compilation, read the audit log |
 
 ```ts
-import { NBQClient, NBQConfigurationClient } from "@zelinqa/nbq";
+import { ZelinqaClient, ZelinqaConfigurationClient } from "@zelinqa/sdk";
 
-const runtime = new NBQClient({ apiKey: process.env.NBQ_RUNTIME_KEY ?? "" });
-const configuration = new NBQConfigurationClient({
-  apiKey: process.env.NBQ_CONFIGURATION_KEY ?? "",
+const runtime = new ZelinqaClient({ apiKey: process.env.ZELINQA_RUNTIME_KEY ?? "" });
+const configuration = new ZelinqaConfigurationClient({
+  apiKey: process.env.ZELINQA_CONFIGURATION_KEY ?? "",
 });
 ```
 
@@ -66,7 +73,7 @@ argument.
 ```ts
 const session = await runtime.startSession({
   client_reference: "crm-lead-8842",
-  max_turns: 10,
+  max_turns: 15,
 });
 
 // First turn: no previous_turn yet.
@@ -98,7 +105,7 @@ await session.applyEvents({
   client_updates: { data: [{ id: "annual_budget", operation: "set", value: 2500 }] },
 });
 
-// Context that never went through NBQ.
+// Context that never went through Zelinqa.
 await session.applyEvents({
   context_update: { mode: "summary", text: "The visitor moves in March." },
 });
@@ -144,16 +151,16 @@ stateVersion = state.versions.state_version;
 ```
 
 If the session moved in the meantime, the API answers `state_version_conflict`
-and the SDK raises `NBQStateVersionConflictError`. **It is never swallowed and
+and the SDK raises `ZelinqaStateVersionConflictError`. **It is never swallowed and
 never auto-refreshed** — you decide whether to re-read and replay:
 
 ```ts
-import { NBQStateVersionConflictError } from "@zelinqa/nbq";
+import { ZelinqaStateVersionConflictError } from "@zelinqa/sdk";
 
 try {
   await session.next({ previous_turn: { user_text } });
 } catch (error) {
-  if (error instanceof NBQStateVersionConflictError) {
+  if (error instanceof ZelinqaStateVersionConflictError) {
     console.warn("session moved", error.suppliedStateVersion, "→", error.currentStateVersion);
     await session.refresh();
   } else {
@@ -164,7 +171,7 @@ try {
 
 ### Soft stops
 
-NBQ does not decide for you. When `max_turns` is reached, the objective is
+Zelinqa does not decide for you. When `max_turns` is reached, the objective is
 already achieved, or normal eligibility is empty, `next` still returns the best
 available question and says so in `warnings`
 (`max_turns_reached`, `objective_achieved`, `eligibility_exhausted_fallback`,
@@ -189,7 +196,7 @@ for await (const question of configuration.iterateQuestions({ active: true })) {
   console.log(question.id, question.text);
 }
 
-// Spreadsheet export: id,text,type,choices,sub_objective_id,active
+// Spreadsheet export includes selection_mode and source.
 const csv = await configuration.exportQuestionsCsv({ sub_objective_id: "so_besoin" });
 
 // Atomic, ordered draft edit. Pin the revision you read to avoid clobbering
@@ -236,36 +243,36 @@ if (terminal.status === "failed") {
 const audit = await configuration.listAudit({ limit: 50, resource_type: "question" });
 ```
 
-`waitForCompilation` raises `NBQCompilationTimeoutError` only when the budget runs
+`waitForCompilation` raises `ZelinqaCompilationTimeoutError` only when the budget runs
 out: a failed compilation is an editorial outcome, not an SDK failure, so inspect
 `status.error` yourself. Pass a `signal` to cancel the wait.
 
 `applyChanges` and `publish` report blocking problems as
-`NBQConfigurationValidationError`, with every issue grouped in `error.issues`
+`ZelinqaConfigurationValidationError`, with every issue grouped in `error.issues`
 (`code`, `message`, `entity`, `entity_id`, `change_index`) so a UI can show them
 all at once. Display `message`; never assume you know every `code`.
 
 ## Errors
 
-Everything the SDK raises derives from `NBQError`.
+Everything the SDK raises derives from `ZelinqaError`.
 
 | Class | When |
 |---|---|
-| `NBQConnectionError` | network failure or per-attempt timeout, after retries |
-| `NBQCompilationTimeoutError` | `waitForCompilation` budget spent |
-| `NBQAPIError` | base of every HTTP failure: `statusCode`, `code`, `message`, `requestId`, `details`, `retryAfter` |
-| `NBQAuthenticationError` | `401` (no `Authorization` header) **or** `403` without a V1 envelope: key invalid, revoked, expired, or missing the scope the gateway requires for the route |
-| `NBQInsufficientScopeError` | `403` with `insufficient_scope`: the service's dynamic check — today only `?state=draft` without `configuration:write`. Carries `requiredScopes` / `grantedScopes` |
-| `NBQNotFoundError` | `404`; specialised as `NBQUnknownSessionError`, `NBQUnknownConfigurationError`, `NBQUnknownCompilationError` |
-| `NBQConflictError` | `409`; specialised as `NBQStateVersionConflictError` (`suppliedStateVersion`, `currentStateVersion`), `NBQIdempotencyKeyReusedError`, `NBQCompilationInProgressError` (`compilationId`, `compilationStatus`) |
-| `NBQCompiledArtifactUnavailableError` | `410`: the artifact pinned by the session is unreachable |
-| `NBQValidationError` | `422`; specialised as `NBQInvalidPreviousTurnError`, `NBQConstraintNoMatchError`, `NBQInvalidChoiceError`, `NBQConfigurationValidationError` (`issues`) |
-| `NBQRateLimitError` | `429`; retried automatically first |
-| `NBQIdempotencyContentionError` | `503 idempotency_contention`; retried automatically, raised only once retries are exhausted |
-| `NBQServerError` | any other `5xx` |
+| `ZelinqaConnectionError` | network failure or per-attempt timeout, after retries |
+| `ZelinqaCompilationTimeoutError` | `waitForCompilation` budget spent |
+| `ZelinqaAPIError` | base of every HTTP failure: `statusCode`, `code`, `message`, `requestId`, `details`, `retryAfter` |
+| `ZelinqaAuthenticationError` | `401` (no `Authorization` header) **or** `403` without a V1 envelope: key invalid, revoked, expired, or missing the scope the gateway requires for the route |
+| `ZelinqaInsufficientScopeError` | `403` with `insufficient_scope`: the service's dynamic check — today only `?state=draft` without `configuration:write`. Carries `requiredScopes` / `grantedScopes` |
+| `ZelinqaNotFoundError` | `404`; specialised as `ZelinqaUnknownSessionError`, `ZelinqaUnknownConfigurationError`, `ZelinqaUnknownCompilationError` |
+| `ZelinqaConflictError` | `409`; specialised as `ZelinqaStateVersionConflictError` (`suppliedStateVersion`, `currentStateVersion`), `ZelinqaIdempotencyKeyReusedError`, `ZelinqaCompilationInProgressError` (`compilationId`, `compilationStatus`) |
+| `ZelinqaCompiledArtifactUnavailableError` | `410`: the artifact pinned by the session is unreachable |
+| `ZelinqaValidationError` | `422`; specialised as `ZelinqaInvalidPreviousTurnError`, `ZelinqaConstraintNoMatchError`, `ZelinqaInvalidChoiceError`, `ZelinqaConfigurationValidationError` (`issues`) |
+| `ZelinqaRateLimitError` | `429`; retried automatically first |
+| `ZelinqaIdempotencyContentionError` | `503 idempotency_contention`; retried automatically, raised only once retries are exhausted |
+| `ZelinqaServerError` | any other `5xx` |
 
 The gateway cannot tell an invalid key from an under-scoped one — both are a bare
-`403 {"message":"Forbidden"}` — so both become `NBQAuthenticationError`. Read
+`403 {"message":"Forbidden"}` — so both become `ZelinqaAuthenticationError`. Read
 `statusCode` to distinguish a missing header (`401`) from a refused key (`403`).
 
 `String(error)` renders as `"<code or status>: <message> (request_id=…)"`. Quote
@@ -277,7 +284,7 @@ The gateway cannot tell an invalid key from an under-scoped one — both are a b
   generates a UUID v4 **once per logical call and reuses it across all retries**,
   so a retry can never double a turn, an outcome, a feedback or a publication.
   Same key + same body replays the original response; same key + different body
-  is `NBQIdempotencyKeyReusedError`. Server-side records are purged after 24 h.
+  is `ZelinqaIdempotencyKeyReusedError`. Server-side records are purged after 24 h.
 - Retried, up to `maxRetries`: connection errors, per-attempt timeouts, `429`,
   `500`, `502`, `503`, `504`. `GET` requests too.
 - Never retried: `400`, `401`, `403`, `404`, `409`, `410`, `422`.
@@ -302,8 +309,8 @@ Any Fetch-compatible function works — useful for tests, tracing, proxies or a
 runtime whose global `fetch` you would rather not use.
 
 ```ts
-const client = new NBQClient({
-  apiKey: process.env.NBQ_RUNTIME_KEY ?? "",
+const client = new ZelinqaClient({
+  apiKey: process.env.ZELINQA_RUNTIME_KEY ?? "",
   fetch: async (input, init) => {
     const started = Date.now();
     const response = await fetch(input, init);

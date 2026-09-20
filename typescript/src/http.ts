@@ -9,8 +9,8 @@
  * The API key is written to exactly one place, the `Authorization` header. It is
  * never logged, never copied into an error and never returned by any accessor.
  */
-import { apiErrorFromResponse, NBQAPIError, NBQConnectionError } from "./errors.js";
-import type { Fetch, NBQClientOptions, RequestOptions } from "./types.js";
+import { apiErrorFromResponse, ZelinqaAPIError, ZelinqaConnectionError } from "./errors.js";
+import type { Fetch, RequestOptions, ZelinqaClientOptions } from "./types.js";
 import { VERSION } from "./version.js";
 
 export const DEFAULT_BASE_URL = "https://api.zelinqa.ai";
@@ -158,7 +158,7 @@ export class HttpTransport {
   readonly #maxRetries: number;
   readonly #fetch: Fetch;
 
-  public constructor(options: NBQClientOptions) {
+  public constructor(options: ZelinqaClientOptions) {
     if (typeof options?.apiKey !== "string" || options.apiKey.trim() === "") {
       throw new TypeError("apiKey must not be empty");
     }
@@ -195,7 +195,7 @@ export class HttpTransport {
     const response = await this.#send(request);
     const payload = await readPayload(response);
     if (payload === undefined || typeof payload !== "object" || payload === null) {
-      throw new NBQAPIError("NBQ API returned a non-JSON response", {
+      throw new ZelinqaAPIError("NBQ API returned a non-JSON response", {
         statusCode: response.status,
         requestId: response.headers.get("X-Request-Id") ?? undefined,
       });
@@ -235,7 +235,7 @@ export class HttpTransport {
           throw error;
         }
         if (attempt >= this.#maxRetries) {
-          throw new NBQConnectionError("Unable to reach the NBQ API", { cause: error });
+          throw new ZelinqaConnectionError("Unable to reach the NBQ API", { cause: error });
         }
         await sleep(backoffMs(attempt), callerSignal);
         continue;

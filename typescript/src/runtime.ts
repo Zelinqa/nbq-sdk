@@ -4,11 +4,12 @@
  * Requires a key carrying the `runtime` scope. Keep it on a backend: the key is
  * a bearer credential and must never reach a browser or a mobile bundle.
  */
+
+import { type AnswerInput, answerTurn } from "./answers.js";
 import { encodePathSegment, HttpTransport } from "./http.js";
 import type {
   FeedbackRequest,
   FeedbackResponse,
-  NBQClientOptions,
   NextRequest,
   NextResponse,
   PendingDecisionView,
@@ -16,6 +17,7 @@ import type {
   SessionCreateRequest,
   SessionEventsRequest,
   SessionState,
+  ZelinqaClientOptions,
 } from "./types.js";
 
 /** `NextRequest` with the `state_version` tracked by a `Session` handle. */
@@ -32,10 +34,10 @@ function sessionPath(sessionId: string, suffix = ""): string {
   return `/v1/sessions/${encodePathSegment(sessionId, "sessionId")}${suffix}`;
 }
 
-export class NBQClient {
+export class ZelinqaClient {
   readonly #http: HttpTransport;
 
-  public constructor(options: NBQClientOptions) {
+  public constructor(options: ZelinqaClientOptions) {
     this.#http = new HttpTransport(options);
   }
 
@@ -45,7 +47,7 @@ export class NBQClient {
 
   /** Never exposes the API key. */
   public toString(): string {
-    return `NBQClient(baseUrl=${this.#http.baseUrl})`;
+    return `ZelinqaClient(baseUrl=${this.#http.baseUrl})`;
   }
 
   /**
@@ -143,18 +145,18 @@ export class NBQClient {
  * to every mutation.
  *
  * Conflicts are never hidden. When the server answers `state_version_conflict`,
- * `NBQStateVersionConflictError` propagates and the handle is left untouched:
+ * `ZelinqaStateVersionConflictError` propagates and the handle is left untouched:
  * decide yourself whether to `refresh()` and replay, or to surface the conflict.
  */
 export class Session {
-  readonly #client: NBQClient;
+  readonly #client: ZelinqaClient;
   readonly #id: string;
   #stateVersion: number;
   #state: SessionState | undefined;
   #pendingDecision: PendingDecisionView | null;
 
   private constructor(
-    client: NBQClient,
+    client: ZelinqaClient,
     id: string,
     stateVersion: number,
     state: SessionState | undefined,
@@ -168,7 +170,7 @@ export class Session {
   }
 
   /** Builds a handle from a `SessionState` already read from the API. */
-  public static fromState(client: NBQClient, state: SessionState): Session {
+  public static fromState(client: ZelinqaClient, state: SessionState): Session {
     return new Session(
       client,
       state.session_id,
@@ -220,6 +222,11 @@ export class Session {
         ? { decision_id: response.decision_id, candidates: response.candidates }
         : null;
     return response;
+  }
+
+  /** Answer the candidate actually asked, without copying IDs. Call sequentially. */
+  public async answer(answer: AnswerInput, options?: RequestOptions): Promise<NextResponse> {
+    return await this.next({ previous_turn: answerTurn(this.#pendingDecision, answer) }, options);
   }
 
   /** `applyEvents` with the tracked `state_version`, unless the caller supplies one. */

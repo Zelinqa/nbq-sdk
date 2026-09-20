@@ -1,7 +1,7 @@
 /**
  * Typed error hierarchy of the NBQ Engine V1 SDK.
  *
- * Every failure raised by a client is an `NBQError`. HTTP failures carry the V1
+ * Every failure raised by a client is an `ZelinqaError`. HTTP failures carry the V1
  * error envelope (`code`, `message`, `request_id`, `details`) when the service
  * produced one.
  *
@@ -12,8 +12,8 @@
  *   requires statically for the route → `403 {"message":"Forbidden"}`.
  *
  * The two `403` causes are indistinguishable from the outside, so any `403`
- * without an envelope becomes `NBQAuthenticationError`.
- * `NBQInsufficientScopeError` is reserved for the service's own dynamic check,
+ * without an envelope becomes `ZelinqaAuthenticationError`.
+ * `ZelinqaInsufficientScopeError` is reserved for the service's own dynamic check,
  * which does answer a V1 envelope with `code: insufficient_scope` — today only
  * `?state=draft` read with a key that lacks `configuration:write`.
  *
@@ -29,7 +29,7 @@ const EMPTY_DETAILS: Readonly<UnknownRecord> = Object.freeze({});
 export const GATEWAY_FORBIDDEN_MESSAGE =
   "Forbidden by the API gateway: the key is invalid, revoked, expired, or does not carry the scope required for this route.";
 
-export interface NBQAPIErrorOptions {
+export interface ZelinqaAPIErrorOptions {
   readonly statusCode: number;
   /** Envelope `code`, or `undefined` when the body is not a V1 envelope. */
   readonly code?: ErrorCode | string | undefined;
@@ -41,7 +41,7 @@ export interface NBQAPIErrorOptions {
 }
 
 /** Base class of every error raised by the SDK. */
-export class NBQError extends Error {
+export class ZelinqaError extends Error {
   public constructor(message: string, options?: ErrorOptions) {
     super(message, options);
     this.name = new.target.name;
@@ -49,10 +49,10 @@ export class NBQError extends Error {
 }
 
 /** The API could not be reached: DNS, socket, TLS or per-attempt timeout. */
-export class NBQConnectionError extends NBQError {}
+export class ZelinqaConnectionError extends ZelinqaError {}
 
 /** `waitForCompilation` exhausted its budget before the job reached a terminal state. */
-export class NBQCompilationTimeoutError extends NBQError {
+export class ZelinqaCompilationTimeoutError extends ZelinqaError {
   public readonly compilationId: string;
   public readonly timeoutMs: number;
 
@@ -64,14 +64,14 @@ export class NBQCompilationTimeoutError extends NBQError {
 }
 
 /** The API answered with an HTTP error status. */
-export class NBQAPIError extends NBQError {
+export class ZelinqaAPIError extends ZelinqaError {
   public readonly statusCode: number;
   public readonly code: ErrorCode | string | undefined;
   public readonly requestId: string | undefined;
   public readonly details: Readonly<UnknownRecord>;
   public readonly retryAfter: number | undefined;
 
-  public constructor(message: string, options: NBQAPIErrorOptions) {
+  public constructor(message: string, options: ZelinqaAPIErrorOptions) {
     super(message, options.cause === undefined ? undefined : { cause: options.cause });
     this.statusCode = options.statusCode;
     this.code = options.code;
@@ -95,18 +95,18 @@ export class NBQAPIError extends NBQError {
  * authorizer requires for the route — the gateway does not distinguish them.
  * Read `statusCode` to tell the two apart.
  */
-export class NBQAuthenticationError extends NBQAPIError {}
+export class ZelinqaAuthenticationError extends ZelinqaAPIError {}
 
 /**
  * `403` with the V1 envelope `insufficient_scope` — the service's own dynamic
  * check refused the request. Today that means reading a draft with a key that
  * carries `configuration:read` but not `configuration:write`.
  */
-export class NBQInsufficientScopeError extends NBQAPIError {
+export class ZelinqaInsufficientScopeError extends ZelinqaAPIError {
   public readonly requiredScopes: readonly string[];
   public readonly grantedScopes: readonly string[];
 
-  public constructor(message: string, options: NBQAPIErrorOptions) {
+  public constructor(message: string, options: ZelinqaAPIErrorOptions) {
     super(message, options);
     this.requiredScopes = stringArray(this.details.required_scopes);
     this.grantedScopes = stringArray(this.details.granted_scopes);
@@ -114,20 +114,20 @@ export class NBQInsufficientScopeError extends NBQAPIError {
 }
 
 /** `404` — the addressed resource does not exist for this tenant. */
-export class NBQNotFoundError extends NBQAPIError {}
-export class NBQUnknownSessionError extends NBQNotFoundError {}
-export class NBQUnknownConfigurationError extends NBQNotFoundError {}
-export class NBQUnknownCompilationError extends NBQNotFoundError {}
+export class ZelinqaNotFoundError extends ZelinqaAPIError {}
+export class ZelinqaUnknownSessionError extends ZelinqaNotFoundError {}
+export class ZelinqaUnknownConfigurationError extends ZelinqaNotFoundError {}
+export class ZelinqaUnknownCompilationError extends ZelinqaNotFoundError {}
 
 /** `409` — the request conflicts with the current server state. */
-export class NBQConflictError extends NBQAPIError {}
+export class ZelinqaConflictError extends ZelinqaAPIError {}
 
 /** `409 state_version_conflict` — the session moved since the version the caller read. */
-export class NBQStateVersionConflictError extends NBQConflictError {
+export class ZelinqaStateVersionConflictError extends ZelinqaConflictError {
   public readonly suppliedStateVersion: number | undefined;
   public readonly currentStateVersion: number | undefined;
 
-  public constructor(message: string, options: NBQAPIErrorOptions) {
+  public constructor(message: string, options: ZelinqaAPIErrorOptions) {
     super(message, options);
     this.suppliedStateVersion = numberOrUndefined(this.details.supplied_state_version);
     this.currentStateVersion = numberOrUndefined(this.details.current_state_version);
@@ -135,14 +135,14 @@ export class NBQStateVersionConflictError extends NBQConflictError {
 }
 
 /** `409 idempotency_key_reused` — same key, different body. Definitive. */
-export class NBQIdempotencyKeyReusedError extends NBQConflictError {}
+export class ZelinqaIdempotencyKeyReusedError extends ZelinqaConflictError {}
 
 /** `409 compilation_in_progress` — a job is already queued or running for this NBQ. */
-export class NBQCompilationInProgressError extends NBQConflictError {
+export class ZelinqaCompilationInProgressError extends ZelinqaConflictError {
   public readonly compilationId: string | undefined;
   public readonly compilationStatus: string | undefined;
 
-  public constructor(message: string, options: NBQAPIErrorOptions) {
+  public constructor(message: string, options: ZelinqaAPIErrorOptions) {
     super(message, options);
     this.compilationId = stringOrUndefined(this.details.compilation_id);
     this.compilationStatus = stringOrUndefined(this.details.status);
@@ -150,32 +150,32 @@ export class NBQCompilationInProgressError extends NBQConflictError {
 }
 
 /** `410 compiled_artifact_unavailable` — the artifact pinned by the session is unreachable. */
-export class NBQCompiledArtifactUnavailableError extends NBQAPIError {}
+export class ZelinqaCompiledArtifactUnavailableError extends ZelinqaAPIError {}
 
 /** `422` — the payload is well formed but cannot be processed. */
-export class NBQValidationError extends NBQAPIError {}
-export class NBQInvalidPreviousTurnError extends NBQValidationError {}
-export class NBQConstraintNoMatchError extends NBQValidationError {}
-export class NBQInvalidChoiceError extends NBQValidationError {}
+export class ZelinqaValidationError extends ZelinqaAPIError {}
+export class ZelinqaInvalidPreviousTurnError extends ZelinqaValidationError {}
+export class ZelinqaConstraintNoMatchError extends ZelinqaValidationError {}
+export class ZelinqaInvalidChoiceError extends ZelinqaValidationError {}
 
 /** `422 configuration_validation_failed` — the draft is not applicable or not publishable. */
-export class NBQConfigurationValidationError extends NBQValidationError {
+export class ZelinqaConfigurationValidationError extends ZelinqaValidationError {
   public readonly issues: readonly ConfigurationIssue[];
 
-  public constructor(message: string, options: NBQAPIErrorOptions) {
+  public constructor(message: string, options: ZelinqaAPIErrorOptions) {
     super(message, options);
     this.issues = configurationIssues(this.details.issues);
   }
 }
 
 /** `429` — the caller is rate limited. Retried automatically. */
-export class NBQRateLimitError extends NBQAPIError {}
+export class ZelinqaRateLimitError extends ZelinqaAPIError {}
 
 /** `503 idempotency_contention` — retried automatically; raised once retries are exhausted. */
-export class NBQIdempotencyContentionError extends NBQAPIError {}
+export class ZelinqaIdempotencyContentionError extends ZelinqaAPIError {}
 
 /** Any other `5xx`. Retried automatically for the retriable statuses. */
-export class NBQServerError extends NBQAPIError {}
+export class ZelinqaServerError extends ZelinqaAPIError {}
 
 /* ---------------------------------------------------------------------- Mapping */
 
@@ -228,60 +228,63 @@ export function parseRetryAfterHeader(
   return undefined;
 }
 
-type NBQAPIErrorClass = new (message: string, options: NBQAPIErrorOptions) => NBQAPIError;
+type ZelinqaAPIErrorClass = new (
+  message: string,
+  options: ZelinqaAPIErrorOptions,
+) => ZelinqaAPIError;
 
-const BY_CODE: Readonly<Record<string, NBQAPIErrorClass>> = Object.freeze({
-  unauthorized: NBQAuthenticationError,
-  insufficient_scope: NBQInsufficientScopeError,
-  idempotency_contention: NBQIdempotencyContentionError,
-  state_version_conflict: NBQStateVersionConflictError,
-  idempotency_key_reused: NBQIdempotencyKeyReusedError,
-  unknown_session: NBQUnknownSessionError,
-  invalid_previous_turn: NBQInvalidPreviousTurnError,
-  constraint_no_match: NBQConstraintNoMatchError,
-  invalid_choice: NBQInvalidChoiceError,
-  compiled_artifact_unavailable: NBQCompiledArtifactUnavailableError,
-  configuration_validation_failed: NBQConfigurationValidationError,
-  compilation_in_progress: NBQCompilationInProgressError,
-  unknown_configuration: NBQUnknownConfigurationError,
-  unknown_compilation: NBQUnknownCompilationError,
+const BY_CODE: Readonly<Record<string, ZelinqaAPIErrorClass>> = Object.freeze({
+  unauthorized: ZelinqaAuthenticationError,
+  insufficient_scope: ZelinqaInsufficientScopeError,
+  idempotency_contention: ZelinqaIdempotencyContentionError,
+  state_version_conflict: ZelinqaStateVersionConflictError,
+  idempotency_key_reused: ZelinqaIdempotencyKeyReusedError,
+  unknown_session: ZelinqaUnknownSessionError,
+  invalid_previous_turn: ZelinqaInvalidPreviousTurnError,
+  constraint_no_match: ZelinqaConstraintNoMatchError,
+  invalid_choice: ZelinqaInvalidChoiceError,
+  compiled_artifact_unavailable: ZelinqaCompiledArtifactUnavailableError,
+  configuration_validation_failed: ZelinqaConfigurationValidationError,
+  compilation_in_progress: ZelinqaCompilationInProgressError,
+  unknown_configuration: ZelinqaUnknownConfigurationError,
+  unknown_compilation: ZelinqaUnknownCompilationError,
 });
 
-function byStatus(statusCode: number): NBQAPIErrorClass {
+function byStatus(statusCode: number): ZelinqaAPIErrorClass {
   if (statusCode === 401) {
-    return NBQAuthenticationError;
+    return ZelinqaAuthenticationError;
   }
   if (statusCode === 403) {
     // No V1 envelope: the gateway refused the credential and does not say
     // whether the key is invalid or merely under-scoped.
-    return NBQAuthenticationError;
+    return ZelinqaAuthenticationError;
   }
   if (statusCode === 404) {
-    return NBQNotFoundError;
+    return ZelinqaNotFoundError;
   }
   if (statusCode === 409) {
-    return NBQConflictError;
+    return ZelinqaConflictError;
   }
   if (statusCode === 410) {
-    return NBQCompiledArtifactUnavailableError;
+    return ZelinqaCompiledArtifactUnavailableError;
   }
   if (statusCode === 422) {
-    return NBQValidationError;
+    return ZelinqaValidationError;
   }
   if (statusCode === 429) {
-    return NBQRateLimitError;
+    return ZelinqaRateLimitError;
   }
   if (statusCode >= 500 && statusCode <= 599) {
-    return NBQServerError;
+    return ZelinqaServerError;
   }
-  return NBQAPIError;
+  return ZelinqaAPIError;
 }
 
 /**
  * Builds the typed error for an HTTP failure.
  *
  * Maps by envelope `code` first, then by HTTP status, with two gateway rules:
- * every `401` is an `NBQAuthenticationError`, and so is every `403` whose body
+ * every `401` is an `ZelinqaAuthenticationError`, and so is every `403` whose body
  * is not a V1 envelope. A body that is not an envelope — the gateway
  * `{"message":"Unauthorized"}` or `{"message":"Forbidden"}`, an HTML page, an
  * empty body — still yields the right class for its status, `code` undefined.
@@ -290,7 +293,7 @@ export function apiErrorFromResponse(
   statusCode: number,
   payload: unknown,
   headers?: Headers | null,
-): NBQAPIError {
+): ZelinqaAPIError {
   const body = isRecord(payload) ? payload : undefined;
   const code = stringOrUndefined(body?.code);
   const details = isRecord(body?.details) ? Object.freeze({ ...body.details }) : undefined;
@@ -307,7 +310,7 @@ export function apiErrorFromResponse(
     parseRetryAfterHeader(headers?.get("Retry-After")) ??
     numberOrUndefined(details?.retry_after_seconds);
 
-  const options: NBQAPIErrorOptions = {
+  const options: ZelinqaAPIErrorOptions = {
     statusCode,
     code,
     requestId: requestId ?? undefined,
@@ -318,7 +321,7 @@ export function apiErrorFromResponse(
   // A `401` is always a credential refusal, whatever body it carries.
   const errorClass =
     statusCode === 401
-      ? NBQAuthenticationError
+      ? ZelinqaAuthenticationError
       : ((code === undefined ? undefined : BY_CODE[code]) ?? byStatus(statusCode));
   return new errorClass(message, options);
 }

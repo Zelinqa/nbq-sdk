@@ -16,8 +16,8 @@ from typing import Any
 
 import pytest
 import yaml
-from nbq import models
 from pydantic import BaseModel, TypeAdapter
+from zelinqa import models
 
 SCHEMA_PREFIX = "#/components/schemas/"
 EXAMPLE_PREFIX = "#/components/examples/"

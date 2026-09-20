@@ -154,7 +154,7 @@ paths:
                 summary: Corrélation avec un identifiant de l'intégrateur
                 value:
                   client_reference: crm-lead-8842
-                  max_turns: 10
+                  max_turns: 15
               reprise_conversation:
                 summary: Conversation déjà commencée hors NBQ
                 value:
@@ -1772,6 +1772,11 @@ components:
             minLength: 1
             maxLength: 128
           description: Cibles que cette question adresse, principale en premier.
+        selection_mode:
+          $ref: '#/components/schemas/QuestionSelectionMode'
+          description: |
+            Présent pour `semi_open` afin d'indiquer si l'appelant accepte un ou
+            plusieurs `choice_ids`. Absent pour les autres types.
 
     QuestionType:
       type: string
@@ -1783,8 +1788,17 @@ components:
         - `semi_open` : choix proposés, complément libre autorisé via
           `structured_answer.free_text`.
 
-        Le mode de sélection est porté par le type lui-même : aucun champ
-        `selection_mode` séparé n'existe en V1.
+        Pour `semi_open`, `selection_mode` précise si un ou plusieurs choix sont
+        permis en plus du complément libre.
+
+    QuestionSelectionMode:
+      type: string
+      enum: [single, multiple]
+
+    QuestionSource:
+      type: string
+      enum: [user, llm_generated]
+      description: Provenance éditoriale de la question.
 
     CandidateChoice:
       type: object
@@ -2229,7 +2243,7 @@ components:
     ConfiguredQuestion:
       type: object
       additionalProperties: false
-      required: [id, text, type, sub_objective_id, active, choices]
+      required: [id, text, type, selection_mode, source, sub_objective_id, active, choices]
       description: |
         Champs volontairement absents en V1 : `must_ask`, `requirement_policy`,
         `importance`, `editor_weight`, `cost_profile`, sensibilité, effort et
@@ -2247,6 +2261,14 @@ components:
           maxLength: 4000
         type:
           $ref: '#/components/schemas/QuestionType'
+        selection_mode:
+          type: [string, 'null']
+          enum: [single, multiple, null]
+          description: |
+            `null` pour une question ouverte ; `single` ou `multiple` pour une
+            question avec choix. Distingue notamment les deux variantes semi-ouvertes.
+        source:
+          $ref: '#/components/schemas/QuestionSource'
         choices:
           type: array
           maxItems: 50
@@ -2560,6 +2582,11 @@ components:
               maxLength: 4000
             type:
               $ref: '#/components/schemas/QuestionType'
+            selection_mode:
+              type: [string, 'null']
+              enum: [single, multiple, null]
+            source:
+              $ref: '#/components/schemas/QuestionSource'
             choices:
               type: array
               maxItems: 50
@@ -3114,8 +3141,8 @@ components:
         client_reference: crm-lead-8842
         status: active
         turn_count: 0
-        max_turns: 10
-        turns_remaining: 10
+        max_turns: 15
+        turns_remaining: 15
         question_state:
           outcomes: []
         targets: {}
@@ -3339,8 +3366,8 @@ components:
           name: Qualifier un projet de canapé
           description: Comprendre le besoin, le budget et le délai avant de recommander un produit.
           qualification_level: balanced
-          max_turns: 10
-          candidates_per_call: 3
+          max_turns: 15
+          candidates_per_call: 1
           order_strength: 0.35
         sub_objectives:
           - id: so_besoin
@@ -3372,6 +3399,8 @@ components:
           - id: q_style
             text: Quel style de canapé recherchez-vous ?
             type: single_choice
+            selection_mode: single
+            source: llm_generated
             sub_objective_id: so_besoin
             active: true
             choices:
@@ -3384,12 +3413,16 @@ components:
           - id: q_budget
             text: Quel budget souhaitez-vous consacrer au canapé ?
             type: open
+            selection_mode: null
+            source: user
             sub_objective_id: so_budget
             active: true
             choices: []
           - id: q_delai
             text: À quelle période souhaitez-vous être livré ?
             type: single_choice
+            selection_mode: single
+            source: user
             sub_objective_id: so_livraison
             active: true
             choices:
@@ -3414,6 +3447,8 @@ components:
           - id: q_style
             text: Quel style de canapé recherchez-vous ?
             type: single_choice
+            selection_mode: single
+            source: llm_generated
             sub_objective_id: so_besoin
             active: true
             choices:
@@ -3426,6 +3461,8 @@ components:
           - id: q_budget
             text: Quel budget souhaitez-vous consacrer au canapé ?
             type: open
+            selection_mode: null
+            source: user
             sub_objective_id: so_budget
             active: true
             choices: []

@@ -35,7 +35,7 @@ from ._http import (
     validate_max_retries,
     validate_timeout,
 )
-from .errors import NBQCompilationTimeoutError
+from .errors import ZelinqaCompilationTimeoutError
 from .models import (
     CompilationStatus,
     ConfigurationAuditPage,
@@ -52,9 +52,9 @@ from .models import (
 )
 
 __all__ = [
-    "AsyncNBQConfigurationClient",
-    "NBQCompilationTimeoutError",
-    "NBQConfigurationClient",
+    "AsyncZelinqaConfigurationClient",
+    "ZelinqaCompilationTimeoutError",
+    "ZelinqaConfigurationClient",
 ]
 
 _CONFIGURATION = "/v1/configuration"
@@ -117,15 +117,20 @@ def _publish_body(*, expected_draft_revision: int | None) -> dict[str, Any]:
 def _dump(model: ConfigurationChangesRequest | PublishRequest) -> dict[str, Any]:
     """Serialise a request body: JSON types, aliases, and no unset field."""
 
-    return model.model_dump(mode="json", by_alias=True, exclude_none=True)
+    payload = model.model_dump(mode="json", by_alias=True, exclude_none=True)
+    if isinstance(model, ConfigurationChangesRequest):
+        for change, wire in zip(model.changes, payload["changes"], strict=True):
+            if change.entity == "question" and "selection_mode" in change.question.model_fields_set:
+                wire["question"]["selection_mode"] = change.question.selection_mode
+    return payload
 
 
 def _compilation_path(compilation_id: str) -> str:
     return f"{_COMPILATIONS}/{path_segment(compilation_id)}"
 
 
-def _timeout_error(compilation_id: str, timeout: float) -> NBQCompilationTimeoutError:
-    return NBQCompilationTimeoutError(
+def _timeout_error(compilation_id: str, timeout: float) -> ZelinqaCompilationTimeoutError:
+    return ZelinqaCompilationTimeoutError(
         f"compilation {compilation_id} did not reach a terminal status within {timeout:g}s",
         compilation_id=compilation_id,
         timeout=timeout,
@@ -139,11 +144,11 @@ def _validate_polling(poll_interval: float, timeout: float) -> None:
         raise ValueError("timeout must be greater than zero")
 
 
-class NBQConfigurationClient:
+class ZelinqaConfigurationClient:
     """Blocking client for the NBQ configuration routes.
 
-    ``api_key`` falls back to ``NBQ_CONFIGURATION_API_KEY`` then
-    ``NBQ_API_KEY``; ``base_url`` to ``NBQ_BASE_URL`` then
+    ``api_key`` falls back to ``ZELINQA_CONFIGURATION_API_KEY`` then
+    ``ZELINQA_API_KEY``; ``base_url`` to ``ZELINQA_BASE_URL`` then
     ``https://api.zelinqa.ai``.
     """
 
@@ -166,9 +171,9 @@ class NBQConfigurationClient:
         )
 
     def __repr__(self) -> str:
-        return f"NBQConfigurationClient(base_url={self._base_url!r})"
+        return f"ZelinqaConfigurationClient(base_url={self._base_url!r})"
 
-    def __enter__(self) -> NBQConfigurationClient:
+    def __enter__(self) -> ZelinqaConfigurationClient:
         return self
 
     def __exit__(
@@ -365,7 +370,7 @@ class NBQConfigurationClient:
 
         A failure is a normal outcome here, not an exception: inspect
         ``status.error``. Only running out of time raises
-        :class:`~nbq.errors.NBQCompilationTimeoutError`.
+        :class:`~zelinqa.errors.ZelinqaCompilationTimeoutError`.
         """
 
         _validate_polling(poll_interval, timeout)
@@ -379,8 +384,8 @@ class NBQConfigurationClient:
             time.sleep(poll_interval)
 
 
-class AsyncNBQConfigurationClient:
-    """Async configuration client. Same surface as :class:`NBQConfigurationClient`."""
+class AsyncZelinqaConfigurationClient:
+    """Async configuration client. Same surface as :class:`ZelinqaConfigurationClient`."""
 
     def __init__(
         self,
@@ -401,9 +406,9 @@ class AsyncNBQConfigurationClient:
         )
 
     def __repr__(self) -> str:
-        return f"AsyncNBQConfigurationClient(base_url={self._base_url!r})"
+        return f"AsyncZelinqaConfigurationClient(base_url={self._base_url!r})"
 
-    async def __aenter__(self) -> AsyncNBQConfigurationClient:
+    async def __aenter__(self) -> AsyncZelinqaConfigurationClient:
         return self
 
     async def __aexit__(
@@ -606,7 +611,7 @@ class AsyncNBQConfigurationClient:
 
         A failure is a normal outcome here, not an exception: inspect
         ``status.error``. Only running out of time raises
-        :class:`~nbq.errors.NBQCompilationTimeoutError`.
+        :class:`~zelinqa.errors.ZelinqaCompilationTimeoutError`.
         """
 
         _validate_polling(poll_interval, timeout)

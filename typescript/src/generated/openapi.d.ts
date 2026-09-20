@@ -414,6 +414,11 @@ export interface components {
             /** @description Toujours un identifiant valide du corpus publié, y compris pour un repli. */
             question_id: string;
             rank: number;
+            /**
+             * @description Présent pour `semi_open` afin d'indiquer si l'appelant accepte un ou
+             *     plusieurs `choice_ids`. Absent pour les autres types.
+             */
+            selection_mode?: components["schemas"]["QuestionSelectionMode"];
             /** @description Cibles que cette question adresse, principale en premier. */
             target_ids: string[];
             /**
@@ -618,6 +623,13 @@ export interface components {
             active: boolean;
             choices: components["schemas"]["ConfiguredChoice"][];
             id: string;
+            /**
+             * @description `null` pour une question ouverte ; `single` ou `multiple` pour une
+             *     question avec choix. Distingue notamment les deux variantes semi-ouvertes.
+             * @enum {string|null}
+             */
+            selection_mode: "single" | "multiple" | null;
+            source: components["schemas"]["QuestionSource"];
             /** @description Exactement un sous-objectif. */
             sub_objective_id: string;
             text: string;
@@ -1017,6 +1029,9 @@ export interface components {
                 active?: boolean;
                 choices?: components["schemas"]["ConfiguredChoice"][];
                 id: string;
+                /** @enum {string|null} */
+                selection_mode?: "single" | "multiple" | null;
+                source?: components["schemas"]["QuestionSource"];
                 sub_objective_id?: string;
                 text?: string;
                 type?: components["schemas"]["QuestionType"];
@@ -1060,6 +1075,13 @@ export interface components {
              */
             source: "client" | "inferred";
         };
+        /** @enum {string} */
+        QuestionSelectionMode: "single" | "multiple";
+        /**
+         * @description Provenance éditoriale de la question.
+         * @enum {string}
+         */
+        QuestionSource: "user" | "llm_generated";
         /**
          * @description - `open` : réponse libre, aucun choix ;
          *     - `single_choice` : un seul choix parmi la liste ;
@@ -1067,8 +1089,8 @@ export interface components {
          *     - `semi_open` : choix proposés, complément libre autorisé via
          *       `structured_answer.free_text`.
          *
-         *     Le mode de sélection est porté par le type lui-même : aucun champ
-         *     `selection_mode` séparé n'existe en V1.
+         *     Pour `semi_open`, `selection_mode` précise si un ou plusieurs choix sont
+         *     permis en plus du complément libre.
          * @enum {string}
          */
         QuestionType: "open" | "single_choice" | "multiple_choice" | "semi_open";

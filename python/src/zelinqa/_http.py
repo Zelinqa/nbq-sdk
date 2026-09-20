@@ -24,14 +24,19 @@ from urllib.parse import quote, urlsplit
 import httpx
 
 from ._version import __version__
-from .errors import NBQAPIError, NBQConnectionError, api_error_from_response, parse_retry_after
+from .errors import (
+    ZelinqaAPIError,
+    ZelinqaConnectionError,
+    api_error_from_response,
+    parse_retry_after,
+)
 
 DEFAULT_BASE_URL = "https://api.zelinqa.ai"
 DEFAULT_TIMEOUT_SECONDS = 30.0
 DEFAULT_MAX_RETRIES = 2
-BASE_URL_ENV = "NBQ_BASE_URL"
-API_KEY_ENV = "NBQ_API_KEY"
-CONFIGURATION_API_KEY_ENV = "NBQ_CONFIGURATION_API_KEY"
+BASE_URL_ENV = "ZELINQA_BASE_URL"
+API_KEY_ENV = "ZELINQA_API_KEY"
+CONFIGURATION_API_KEY_ENV = "ZELINQA_CONFIGURATION_API_KEY"
 
 #: First backoff delay. Doubles per attempt, up to :data:`BACKOFF_CAP_SECONDS`.
 BACKOFF_BASE_SECONDS = 0.5
@@ -93,7 +98,7 @@ def client_headers(api_key: str) -> dict[str, str]:
     return {
         "Authorization": f"Bearer {api_key}",
         "Accept": JSON_ACCEPT,
-        "User-Agent": f"nbq-python/{__version__}",
+        "User-Agent": f"zelinqa-python/{__version__}",
     }
 
 
@@ -259,7 +264,7 @@ def _details_retry_after(payload: Any) -> float | None:
     return max(float(value), 0.0)
 
 
-def error_for(attempt: Attempt) -> NBQAPIError:
+def error_for(attempt: Attempt) -> ZelinqaAPIError:
     """Build the typed error of a failed attempt."""
 
     payload = attempt.payload
@@ -346,7 +351,7 @@ class SyncExecutor(_Executor):
                 break
             time.sleep(delay)
         if attempt is None:
-            raise NBQConnectionError("unable to reach the NBQ API") from last_error
+            raise ZelinqaConnectionError("unable to reach the NBQ API") from last_error
         if not attempt.is_success:
             raise error_for(attempt)
         return attempt
@@ -397,7 +402,7 @@ class AsyncExecutor(_Executor):
                 break
             await asyncio.sleep(delay)
         if attempt is None:
-            raise NBQConnectionError("unable to reach the NBQ API") from last_error
+            raise ZelinqaConnectionError("unable to reach the NBQ API") from last_error
         if not attempt.is_success:
             raise error_for(attempt)
         return attempt

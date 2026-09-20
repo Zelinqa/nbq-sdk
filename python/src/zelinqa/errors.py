@@ -7,9 +7,9 @@ Two refusals never reach the service and never carry an envelope: ``401`` when
 the ``Authorization`` header is missing, and ``403`` when the key is invalid,
 revoked, expired, or lacks the scope the gateway authorizer requires for that
 route. The authorizer answers the same opaque body in every ``403`` case, so
-both map to :class:`NBQAuthenticationError`. Only the service-side dynamic scope
+both map to :class:`ZelinqaAuthenticationError`. Only the service-side dynamic scope
 check — today ``?state=draft`` — produces a ``403`` V1 envelope, and that one is
-:class:`NBQInsufficientScopeError`.
+:class:`ZelinqaInsufficientScopeError`.
 
 No exception, message or ``repr`` ever carries the API key.
 """
@@ -27,43 +27,43 @@ from .models import ConfigurationIssue
 MAX_RETRY_AFTER_SECONDS = 30.0
 
 __all__ = [
-    "NBQAPIError",
-    "NBQAuthenticationError",
-    "NBQCompilationInProgressError",
-    "NBQCompilationTimeoutError",
-    "NBQCompiledArtifactUnavailableError",
-    "NBQConfigurationValidationError",
-    "NBQConflictError",
-    "NBQConnectionError",
-    "NBQConstraintNoMatchError",
-    "NBQError",
-    "NBQIdempotencyContentionError",
-    "NBQIdempotencyKeyReusedError",
-    "NBQInsufficientScopeError",
-    "NBQInvalidChoiceError",
-    "NBQInvalidPreviousTurnError",
-    "NBQNotFoundError",
-    "NBQRateLimitError",
-    "NBQServerError",
-    "NBQStateVersionConflictError",
-    "NBQUnknownCompilationError",
-    "NBQUnknownConfigurationError",
-    "NBQUnknownSessionError",
-    "NBQValidationError",
+    "ZelinqaAPIError",
+    "ZelinqaAuthenticationError",
+    "ZelinqaCompilationInProgressError",
+    "ZelinqaCompilationTimeoutError",
+    "ZelinqaCompiledArtifactUnavailableError",
+    "ZelinqaConfigurationValidationError",
+    "ZelinqaConflictError",
+    "ZelinqaConnectionError",
+    "ZelinqaConstraintNoMatchError",
+    "ZelinqaError",
+    "ZelinqaIdempotencyContentionError",
+    "ZelinqaIdempotencyKeyReusedError",
+    "ZelinqaInsufficientScopeError",
+    "ZelinqaInvalidChoiceError",
+    "ZelinqaInvalidPreviousTurnError",
+    "ZelinqaNotFoundError",
+    "ZelinqaRateLimitError",
+    "ZelinqaServerError",
+    "ZelinqaStateVersionConflictError",
+    "ZelinqaUnknownCompilationError",
+    "ZelinqaUnknownConfigurationError",
+    "ZelinqaUnknownSessionError",
+    "ZelinqaValidationError",
     "api_error_from_response",
     "parse_retry_after",
 ]
 
 
-class NBQError(Exception):
+class ZelinqaError(Exception):
     """Base class of every SDK error."""
 
 
-class NBQConnectionError(NBQError):
+class ZelinqaConnectionError(ZelinqaError):
     """The API could not be reached, or timed out, after every retry."""
 
 
-class NBQCompilationTimeoutError(NBQError):
+class ZelinqaCompilationTimeoutError(ZelinqaError):
     """``wait_for_compilation`` gave up before the job reached a terminal state."""
 
     def __init__(self, message: str, *, compilation_id: str, timeout: float) -> None:
@@ -72,7 +72,7 @@ class NBQCompilationTimeoutError(NBQError):
         self.timeout = timeout
 
 
-class NBQAPIError(NBQError):
+class ZelinqaAPIError(ZelinqaError):
     """The NBQ API answered with an unsuccessful status."""
 
     def __init__(
@@ -105,7 +105,7 @@ class NBQAPIError(NBQError):
         )
 
 
-class NBQAuthenticationError(NBQAPIError):
+class ZelinqaAuthenticationError(ZelinqaAPIError):
     """The gateway refused the key before the request reached the service.
 
     Missing header (``401``), or invalid, revoked, expired, or missing the scope
@@ -115,13 +115,13 @@ class NBQAuthenticationError(NBQAPIError):
     """
 
 
-class NBQInsufficientScopeError(NBQAPIError):
+class ZelinqaInsufficientScopeError(ZelinqaAPIError):
     """The service refused a scope it can only check from the request content.
 
     Raised on the ``403`` V1 envelope ``insufficient_scope`` — today only
     ``?state=draft`` asked with a key that lacks ``configuration:write``. A
     scope the authorizer checks statically never reaches this class: it surfaces
-    as :class:`NBQAuthenticationError`.
+    as :class:`ZelinqaAuthenticationError`.
     """
 
     def __init__(self, message: str, **kwargs: Any) -> None:
@@ -130,27 +130,27 @@ class NBQInsufficientScopeError(NBQAPIError):
         self.granted_scopes: list[str] = _string_list(self.details.get("granted_scopes"))
 
 
-class NBQNotFoundError(NBQAPIError):
+class ZelinqaNotFoundError(ZelinqaAPIError):
     """The addressed resource does not exist, or belongs to another tenant."""
 
 
-class NBQUnknownSessionError(NBQNotFoundError):
+class ZelinqaUnknownSessionError(ZelinqaNotFoundError):
     """The session is unknown, or belongs to another tenant."""
 
 
-class NBQUnknownConfigurationError(NBQNotFoundError):
+class ZelinqaUnknownConfigurationError(ZelinqaNotFoundError):
     """No configuration matches the requested state."""
 
 
-class NBQUnknownCompilationError(NBQNotFoundError):
+class ZelinqaUnknownCompilationError(ZelinqaNotFoundError):
     """The compilation job is unknown, or belongs to another tenant."""
 
 
-class NBQConflictError(NBQAPIError):
+class ZelinqaConflictError(ZelinqaAPIError):
     """The request conflicts with the current server state."""
 
 
-class NBQStateVersionConflictError(NBQConflictError):
+class ZelinqaStateVersionConflictError(ZelinqaConflictError):
     """The session moved since the ``state_version`` the caller supplied."""
 
     def __init__(self, message: str, **kwargs: Any) -> None:
@@ -159,7 +159,7 @@ class NBQStateVersionConflictError(NBQConflictError):
         self.current_state_version = _optional_int(self.details.get("current_state_version"))
 
 
-class NBQIdempotencyKeyReusedError(NBQConflictError):
+class ZelinqaIdempotencyKeyReusedError(ZelinqaConflictError):
     """The idempotency key already served for a different body."""
 
     def __init__(self, message: str, **kwargs: Any) -> None:
@@ -167,7 +167,7 @@ class NBQIdempotencyKeyReusedError(NBQConflictError):
         self.idempotency_key = _optional_str(self.details.get("idempotency_key"))
 
 
-class NBQCompilationInProgressError(NBQConflictError):
+class ZelinqaCompilationInProgressError(ZelinqaConflictError):
     """A compilation is already queued or running for this NBQ."""
 
     def __init__(self, message: str, **kwargs: Any) -> None:
@@ -176,27 +176,27 @@ class NBQCompilationInProgressError(NBQConflictError):
         self.status = _optional_str(self.details.get("status"))
 
 
-class NBQCompiledArtifactUnavailableError(NBQAPIError):
+class ZelinqaCompiledArtifactUnavailableError(ZelinqaAPIError):
     """The engine artifact pinned by the session is really unreachable."""
 
 
-class NBQValidationError(NBQAPIError):
+class ZelinqaValidationError(ZelinqaAPIError):
     """The request does not satisfy the contract, or leaves no possible answer."""
 
 
-class NBQInvalidPreviousTurnError(NBQValidationError):
+class ZelinqaInvalidPreviousTurnError(ZelinqaValidationError):
     """The supplied identifiers contradict the pending decision."""
 
 
-class NBQConstraintNoMatchError(NBQValidationError):
+class ZelinqaConstraintNoMatchError(ZelinqaValidationError):
     """No available question satisfies the strict constraints of the call."""
 
 
-class NBQInvalidChoiceError(NBQValidationError):
+class ZelinqaInvalidChoiceError(ZelinqaValidationError):
     """A supplied value does not belong to the published schema or choices."""
 
 
-class NBQConfigurationValidationError(NBQValidationError):
+class ZelinqaConfigurationValidationError(ZelinqaValidationError):
     """Draft validation failed. Every anomaly is reported together."""
 
     def __init__(self, message: str, **kwargs: Any) -> None:
@@ -204,33 +204,33 @@ class NBQConfigurationValidationError(NBQValidationError):
         self.issues: list[ConfigurationIssue] = _issues(self.details.get("issues"))
 
 
-class NBQRateLimitError(NBQAPIError):
+class ZelinqaRateLimitError(ZelinqaAPIError):
     """The key exceeded its rate limit."""
 
 
-class NBQIdempotencyContentionError(NBQAPIError):
+class ZelinqaIdempotencyContentionError(ZelinqaAPIError):
     """The idempotency key could not be reserved. Retried first, then raised."""
 
 
-class NBQServerError(NBQAPIError):
+class ZelinqaServerError(ZelinqaAPIError):
     """The NBQ service failed to process the request."""
 
 
-_CODE_ERRORS: dict[str, type[NBQAPIError]] = {
-    "unauthorized": NBQAuthenticationError,
-    "insufficient_scope": NBQInsufficientScopeError,
-    "idempotency_contention": NBQIdempotencyContentionError,
-    "state_version_conflict": NBQStateVersionConflictError,
-    "idempotency_key_reused": NBQIdempotencyKeyReusedError,
-    "unknown_session": NBQUnknownSessionError,
-    "invalid_previous_turn": NBQInvalidPreviousTurnError,
-    "constraint_no_match": NBQConstraintNoMatchError,
-    "invalid_choice": NBQInvalidChoiceError,
-    "compiled_artifact_unavailable": NBQCompiledArtifactUnavailableError,
-    "configuration_validation_failed": NBQConfigurationValidationError,
-    "compilation_in_progress": NBQCompilationInProgressError,
-    "unknown_configuration": NBQUnknownConfigurationError,
-    "unknown_compilation": NBQUnknownCompilationError,
+_CODE_ERRORS: dict[str, type[ZelinqaAPIError]] = {
+    "unauthorized": ZelinqaAuthenticationError,
+    "insufficient_scope": ZelinqaInsufficientScopeError,
+    "idempotency_contention": ZelinqaIdempotencyContentionError,
+    "state_version_conflict": ZelinqaStateVersionConflictError,
+    "idempotency_key_reused": ZelinqaIdempotencyKeyReusedError,
+    "unknown_session": ZelinqaUnknownSessionError,
+    "invalid_previous_turn": ZelinqaInvalidPreviousTurnError,
+    "constraint_no_match": ZelinqaConstraintNoMatchError,
+    "invalid_choice": ZelinqaInvalidChoiceError,
+    "compiled_artifact_unavailable": ZelinqaCompiledArtifactUnavailableError,
+    "configuration_validation_failed": ZelinqaConfigurationValidationError,
+    "compilation_in_progress": ZelinqaCompilationInProgressError,
+    "unknown_configuration": ZelinqaUnknownConfigurationError,
+    "unknown_compilation": ZelinqaUnknownCompilationError,
 }
 
 #: The gateway answers 403 with the same opaque body for an invalid key, a
@@ -240,14 +240,14 @@ GATEWAY_FORBIDDEN_MESSAGE = (
     "not carry the scope required for this route."
 )
 
-_STATUS_ERRORS: dict[int, type[NBQAPIError]] = {
-    401: NBQAuthenticationError,
-    403: NBQAuthenticationError,
-    404: NBQNotFoundError,
-    409: NBQConflictError,
-    410: NBQCompiledArtifactUnavailableError,
-    422: NBQValidationError,
-    429: NBQRateLimitError,
+_STATUS_ERRORS: dict[int, type[ZelinqaAPIError]] = {
+    401: ZelinqaAuthenticationError,
+    403: ZelinqaAuthenticationError,
+    404: ZelinqaNotFoundError,
+    409: ZelinqaConflictError,
+    410: ZelinqaCompiledArtifactUnavailableError,
+    422: ZelinqaValidationError,
+    429: ZelinqaRateLimitError,
 }
 
 
@@ -280,7 +280,7 @@ def _issues(value: Any) -> list[ConfigurationIssue]:
     return parsed
 
 
-def error_class_for(status_code: int, code: str | None) -> type[NBQAPIError]:
+def error_class_for(status_code: int, code: str | None) -> type[ZelinqaAPIError]:
     """Return the exception class for an envelope code, falling back on status."""
 
     if code is not None and code in _CODE_ERRORS:
@@ -288,15 +288,15 @@ def error_class_for(status_code: int, code: str | None) -> type[NBQAPIError]:
     if status_code in _STATUS_ERRORS:
         return _STATUS_ERRORS[status_code]
     if status_code >= 500:
-        return NBQServerError
-    return NBQAPIError
+        return ZelinqaServerError
+    return ZelinqaAPIError
 
 
 def api_error_from_response(
     status_code: int,
     payload: Any,
     headers: Mapping[str, str] | None = None,
-) -> NBQAPIError:
+) -> ZelinqaAPIError:
     """Build the typed error for an unsuccessful response.
 
     ``payload`` is the decoded JSON body when there is one. The public gateway
@@ -320,7 +320,7 @@ def api_error_from_response(
     if status_code == 403 and code is None:
         # No V1 envelope: the refusal came from the authorizer, which does not
         # say which of the three reasons applied.
-        return NBQAuthenticationError(
+        return ZelinqaAuthenticationError(
             GATEWAY_FORBIDDEN_MESSAGE,
             status_code=status_code,
             code=None,

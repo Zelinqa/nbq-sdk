@@ -1,26 +1,26 @@
 """Live recette of the Python SDK against the staging NBQ "SDK MCP V1 Recette".
 
-Opt-in only: the whole module is skipped unless ``NBQ_LIVE=1``, and the ``live``
+Opt-in only: the whole module is skipped unless ``ZELINQA_LIVE=1``, and the ``live``
 marker is excluded from the default ``pytest`` run. Nothing here prints a key,
 a verbatim, or a payload — only request ids, error codes and counters.
 
 Environment
 -----------
-``NBQ_LIVE``                    set to ``1`` to run this suite
-``NBQ_LIVE_BASE_URL``           defaults to ``https://api.zelinqa.ai``
-``NBQ_LIVE_RUNTIME_KEY``        scope ``runtime``
-``NBQ_LIVE_CONFIG_READ_KEY``    scope ``configuration:read``
-``NBQ_LIVE_CONFIG_WRITE_KEY``   scope ``configuration:write``
-``NBQ_LIVE_CONFIG_PUBLISH_KEY`` scope ``configuration:publish``
-``NBQ_LIVE_CONFIG_MANAGE_KEY``  read + write + publish, the Studio-style key
-``NBQ_LIVE_REVOKED_KEY``        a key that was revoked on purpose
+``ZELINQA_LIVE``                    set to ``1`` to run this suite
+``ZELINQA_LIVE_BASE_URL``           defaults to ``https://api.zelinqa.ai``
+``ZELINQA_LIVE_RUNTIME_KEY``        scope ``runtime``
+``ZELINQA_LIVE_CONFIG_READ_KEY``    scope ``configuration:read``
+``ZELINQA_LIVE_CONFIG_WRITE_KEY``   scope ``configuration:write``
+``ZELINQA_LIVE_CONFIG_PUBLISH_KEY`` scope ``configuration:publish``
+``ZELINQA_LIVE_CONFIG_MANAGE_KEY``  read + write + publish, the Studio-style key
+``ZELINQA_LIVE_REVOKED_KEY``        a key that was revoked on purpose
 
 Re-runnable by design: the corpus is upserted (read the draft, create what is
 missing, update what exists), so running the suite twice against the same NBQ
 converges instead of failing.
 
-Bedrock is capped at 10 requests per minute on staging, so the suite sleeps one
-second between ``/next`` calls and keeps the model-hitting calls under twenty.
+The suite deliberately limits model calls and spaces turns to keep this
+functional recipe inexpensive; this is not a throughput benchmark.
 """
 
 from __future__ import annotations
@@ -34,24 +34,24 @@ from typing import Any
 
 import httpx
 import pytest
-from nbq import (
-    NBQAuthenticationError,
-    NBQClient,
-    NBQCompilationInProgressError,
-    NBQConfigurationClient,
-    NBQIdempotencyKeyReusedError,
-    NBQInsufficientScopeError,
-    NBQStateVersionConflictError,
-    NBQUnknownConfigurationError,
-    NBQUnknownSessionError,
+from zelinqa import (
     SessionStateResponse,
+    ZelinqaAuthenticationError,
+    ZelinqaClient,
+    ZelinqaCompilationInProgressError,
+    ZelinqaConfigurationClient,
+    ZelinqaIdempotencyKeyReusedError,
+    ZelinqaInsufficientScopeError,
+    ZelinqaStateVersionConflictError,
+    ZelinqaUnknownConfigurationError,
+    ZelinqaUnknownSessionError,
 )
 
-LIVE_ENABLED = os.environ.get("NBQ_LIVE") == "1"
+LIVE_ENABLED = os.environ.get("ZELINQA_LIVE") == "1"
 
 pytestmark = [
     pytest.mark.live,
-    pytest.mark.skipif(not LIVE_ENABLED, reason="live tests need NBQ_LIVE=1"),
+    pytest.mark.skipif(not LIVE_ENABLED, reason="live tests need ZELINQA_LIVE=1"),
 ]
 
 DEFAULT_BASE_URL = "https://api.zelinqa.ai"
@@ -180,7 +180,7 @@ def _key(name: str) -> str:
 
 
 def _base_url() -> str:
-    return os.environ.get("NBQ_LIVE_BASE_URL") or DEFAULT_BASE_URL
+    return os.environ.get("ZELINQA_LIVE_BASE_URL") or DEFAULT_BASE_URL
 
 
 @dataclass
@@ -207,45 +207,53 @@ def state() -> LiveState:
 
 
 @pytest.fixture(scope="module")
-def manage() -> Iterator[NBQConfigurationClient]:
-    with NBQConfigurationClient(_key("NBQ_LIVE_CONFIG_MANAGE_KEY"), base_url=_base_url()) as c:
+def manage() -> Iterator[ZelinqaConfigurationClient]:
+    with ZelinqaConfigurationClient(
+        _key("ZELINQA_LIVE_CONFIG_MANAGE_KEY"), base_url=_base_url()
+    ) as c:
         yield c
 
 
 @pytest.fixture(scope="module")
-def reader() -> Iterator[NBQConfigurationClient]:
-    with NBQConfigurationClient(_key("NBQ_LIVE_CONFIG_READ_KEY"), base_url=_base_url()) as c:
+def reader() -> Iterator[ZelinqaConfigurationClient]:
+    with ZelinqaConfigurationClient(
+        _key("ZELINQA_LIVE_CONFIG_READ_KEY"), base_url=_base_url()
+    ) as c:
         yield c
 
 
 @pytest.fixture(scope="module")
-def writer() -> Iterator[NBQConfigurationClient]:
-    with NBQConfigurationClient(_key("NBQ_LIVE_CONFIG_WRITE_KEY"), base_url=_base_url()) as c:
+def writer() -> Iterator[ZelinqaConfigurationClient]:
+    with ZelinqaConfigurationClient(
+        _key("ZELINQA_LIVE_CONFIG_WRITE_KEY"), base_url=_base_url()
+    ) as c:
         yield c
 
 
 @pytest.fixture(scope="module")
-def publisher() -> Iterator[NBQConfigurationClient]:
-    with NBQConfigurationClient(_key("NBQ_LIVE_CONFIG_PUBLISH_KEY"), base_url=_base_url()) as c:
+def publisher() -> Iterator[ZelinqaConfigurationClient]:
+    with ZelinqaConfigurationClient(
+        _key("ZELINQA_LIVE_CONFIG_PUBLISH_KEY"), base_url=_base_url()
+    ) as c:
         yield c
 
 
 @pytest.fixture(scope="module")
-def runtime() -> Iterator[NBQClient]:
-    with NBQClient(_key("NBQ_LIVE_RUNTIME_KEY"), base_url=_base_url()) as c:
+def runtime() -> Iterator[ZelinqaClient]:
+    with ZelinqaClient(_key("ZELINQA_LIVE_RUNTIME_KEY"), base_url=_base_url()) as c:
         yield c
 
 
-def _read_draft_or_published(client: NBQConfigurationClient) -> Any:
+def _read_draft_or_published(client: ZelinqaConfigurationClient) -> Any:
     """Return the draft if there is one, else the published configuration."""
 
     try:
         return client.get_configuration(state="draft")
-    except NBQUnknownConfigurationError:
+    except ZelinqaUnknownConfigurationError:
         print("  no draft yet, falling back on the published configuration")
     try:
         return client.get_configuration()
-    except NBQUnknownConfigurationError:
+    except ZelinqaUnknownConfigurationError:
         print("  nothing published yet either: the corpus will be created")
         return None
 
@@ -295,7 +303,7 @@ def _upsert_changes(existing: Any) -> list[dict[str, Any]]:
 
 
 def test_01_upsert_corpus_with_the_manage_key(
-    manage: NBQConfigurationClient, state: LiveState
+    manage: ZelinqaConfigurationClient, state: LiveState
 ) -> None:
     existing = _read_draft_or_published(manage)
     changes = _upsert_changes(existing)
@@ -310,7 +318,9 @@ def test_01_upsert_corpus_with_the_manage_key(
     state.draft_revision = response.draft_revision
 
 
-def test_02_manage_key_reads_the_draft(manage: NBQConfigurationClient, state: LiveState) -> None:
+def test_02_manage_key_reads_the_draft(
+    manage: ZelinqaConfigurationClient, state: LiveState
+) -> None:
     draft = manage.get_configuration(state="draft")
     state.note("get_configuration(draft)", draft.request_id)
 
@@ -324,7 +334,7 @@ def test_02_manage_key_reads_the_draft(manage: NBQConfigurationClient, state: Li
     }
 
 
-def test_03_manage_key_lists_draft_questions(manage: NBQConfigurationClient) -> None:
+def test_03_manage_key_lists_draft_questions(manage: ZelinqaConfigurationClient) -> None:
     page = manage.list_questions(state="draft", limit=200)
     print(f"  request_id={page.request_id} questions={len(page.questions)}")
     assert {question.id for question in page.questions} >= QUESTION_IDS
@@ -334,11 +344,11 @@ def test_03_manage_key_lists_draft_questions(manage: NBQConfigurationClient) -> 
 
 
 def test_04_read_key_on_the_draft_is_an_insufficient_scope(
-    reader: NBQConfigurationClient,
+    reader: ZelinqaConfigurationClient,
 ) -> None:
     """The service checks ?state=draft dynamically, so the envelope is a V1 one."""
 
-    with pytest.raises(NBQInsufficientScopeError) as captured:
+    with pytest.raises(ZelinqaInsufficientScopeError) as captured:
         reader.get_configuration(state="draft")
 
     error = captured.value
@@ -348,34 +358,36 @@ def test_04_read_key_on_the_draft_is_an_insufficient_scope(
     assert "configuration:write" in error.required_scopes
 
 
-def test_05_write_only_key_cannot_read_the_draft(writer: NBQConfigurationClient) -> None:
+def test_05_write_only_key_cannot_read_the_draft(writer: ZelinqaConfigurationClient) -> None:
     """The authorizer wants configuration:read on this route; a write-only key is
     refused before the service sees the query string."""
 
-    with pytest.raises(NBQAuthenticationError) as captured:
+    with pytest.raises(ZelinqaAuthenticationError) as captured:
         writer.get_configuration(state="draft")
     print(f"  status={captured.value.status_code} code={captured.value.code}")
     assert captured.value.status_code == 403
     assert captured.value.code is None
 
 
-def test_06_read_key_cannot_read_the_audit_log(reader: NBQConfigurationClient) -> None:
-    with pytest.raises(NBQAuthenticationError) as captured:
+def test_06_read_key_cannot_read_the_audit_log(reader: ZelinqaConfigurationClient) -> None:
+    with pytest.raises(ZelinqaAuthenticationError) as captured:
         reader.list_audit()
     print(f"  status={captured.value.status_code} code={captured.value.code}")
     assert captured.value.status_code == 403
 
 
 def test_07_runtime_key_cannot_read_the_configuration() -> None:
-    with NBQConfigurationClient(_key("NBQ_LIVE_RUNTIME_KEY"), base_url=_base_url()) as client:
-        with pytest.raises(NBQAuthenticationError) as captured:
+    with ZelinqaConfigurationClient(
+        _key("ZELINQA_LIVE_RUNTIME_KEY"), base_url=_base_url()
+    ) as client:
+        with pytest.raises(ZelinqaAuthenticationError) as captured:
             client.get_configuration()
     print(f"  status={captured.value.status_code} code={captured.value.code}")
     assert captured.value.status_code == 403
 
 
-def test_08_write_key_cannot_publish(writer: NBQConfigurationClient) -> None:
-    with pytest.raises(NBQAuthenticationError) as captured:
+def test_08_write_key_cannot_publish(writer: ZelinqaConfigurationClient) -> None:
+    with pytest.raises(ZelinqaAuthenticationError) as captured:
         writer.publish()
     print(f"  status={captured.value.status_code} code={captured.value.code}")
     assert captured.value.status_code == 403
@@ -385,7 +397,7 @@ def test_08_write_key_cannot_publish(writer: NBQConfigurationClient) -> None:
 
 
 def test_09_write_only_key_applies_a_change(
-    writer: NBQConfigurationClient, manage: NBQConfigurationClient, state: LiveState
+    writer: ZelinqaConfigurationClient, manage: ZelinqaConfigurationClient, state: LiveState
 ) -> None:
     response = writer.apply_changes(
         [{"entity": "objective", "operation": "update", "objective": OBJECTIVE}],
@@ -405,7 +417,7 @@ def test_09_write_only_key_applies_a_change(
 
 
 def test_10_publish_queues_a_compilation(
-    publisher: NBQConfigurationClient, state: LiveState
+    publisher: ZelinqaConfigurationClient, state: LiveState
 ) -> None:
     status = publisher.publish(expected_draft_revision=state.draft_revision)
     state.note("publish", status.request_id)
@@ -417,12 +429,14 @@ def test_10_publish_queues_a_compilation(
     state.compilation_id = status.compilation_id
 
 
-def test_11_a_second_publish_conflicts(publisher: NBQConfigurationClient, state: LiveState) -> None:
+def test_11_a_second_publish_conflicts(
+    publisher: ZelinqaConfigurationClient, state: LiveState
+) -> None:
     """Tolerant on purpose: a very small corpus can finish before this runs."""
 
     try:
         status = publisher.publish()
-    except NBQCompilationInProgressError as error:
+    except ZelinqaCompilationInProgressError as error:
         print(f"  code={error.code} compilation_id={error.compilation_id} status={error.status}")
         assert error.status_code == 409
         assert error.compilation_id == state.compilation_id
@@ -432,7 +446,7 @@ def test_11_a_second_publish_conflicts(publisher: NBQConfigurationClient, state:
 
 
 def test_12_wait_for_the_compilation_to_succeed(
-    manage: NBQConfigurationClient, state: LiveState
+    manage: ZelinqaConfigurationClient, state: LiveState
 ) -> None:
     assert state.compilation_id is not None
     status = manage.wait_for_compilation(
@@ -450,7 +464,7 @@ def test_12_wait_for_the_compilation_to_succeed(
 
 
 def test_13_publish_key_reads_the_audit_log(
-    publisher: NBQConfigurationClient, state: LiveState
+    publisher: ZelinqaConfigurationClient, state: LiveState
 ) -> None:
     page = publisher.list_audit(limit=10)
     state.note("list_audit", page.request_id)
@@ -462,7 +476,7 @@ def test_13_publish_key_reads_the_audit_log(
 
 
 def test_14_read_key_sees_the_published_corpus(
-    reader: NBQConfigurationClient, state: LiveState
+    reader: ZelinqaConfigurationClient, state: LiveState
 ) -> None:
     configuration = reader.get_configuration()
     state.note("get_configuration(published)", configuration.request_id)
@@ -477,7 +491,7 @@ def test_14_read_key_sees_the_published_corpus(
     }
 
 
-def test_15_questions_paginate_by_cursor(reader: NBQConfigurationClient) -> None:
+def test_15_questions_paginate_by_cursor(reader: ZelinqaConfigurationClient) -> None:
     seen: list[str] = []
     cursor: str | None = None
     pages = 0
@@ -500,13 +514,13 @@ def test_15_questions_paginate_by_cursor(reader: NBQConfigurationClient) -> None
         assert total == len(seen)
 
 
-def test_16_iter_questions_walks_the_whole_corpus(reader: NBQConfigurationClient) -> None:
+def test_16_iter_questions_walks_the_whole_corpus(reader: ZelinqaConfigurationClient) -> None:
     ids = [question.id for question in reader.iter_questions(limit=2)]
     assert set(ids) >= QUESTION_IDS
     assert len(ids) == len(set(ids))
 
 
-def test_17_question_filters_narrow_the_corpus(reader: NBQConfigurationClient) -> None:
+def test_17_question_filters_narrow_the_corpus(reader: ZelinqaConfigurationClient) -> None:
     by_sub_objective = reader.list_questions(sub_objective_id="sdk_so_besoin", limit=200)
     assert {q.id for q in by_sub_objective.questions} >= {
         "sdk_q_usage",
@@ -530,16 +544,16 @@ def test_17_question_filters_narrow_the_corpus(reader: NBQConfigurationClient) -
     )
 
 
-def test_18_csv_export_has_the_documented_header(reader: NBQConfigurationClient) -> None:
+def test_18_csv_export_has_the_documented_header(reader: ZelinqaConfigurationClient) -> None:
     export = reader.export_questions_csv()
     lines = export.splitlines()
     print(f"  csv_lines={len(lines)}")
-    assert lines[0] == "id,text,type,choices,sub_objective_id,active"
+    assert lines[0] == "id,text,type,selection_mode,choices,source,sub_objective_id,active"
     assert any(line.startswith("sdk_q_budget,") for line in lines[1:])
 
 
 def test_19_read_key_reads_the_compilation(
-    reader: NBQConfigurationClient, state: LiveState
+    reader: ZelinqaConfigurationClient, state: LiveState
 ) -> None:
     assert state.compilation_id is not None
     status = reader.get_compilation(state.compilation_id)
@@ -550,7 +564,7 @@ def test_19_read_key_reads_the_compilation(
 # ------------------------------------------------------------- 6. the runtime
 
 
-def test_20_create_a_session(runtime: NBQClient, state: LiveState) -> None:
+def test_20_create_a_session(runtime: ZelinqaClient, state: LiveState) -> None:
     session = runtime.create_session(client_reference="sdk-python-recette")
     state.note("create_session", session.request_id)
     print(f"  status={session.status} state_version={session.versions.state_version}")
@@ -566,7 +580,7 @@ def test_20_create_a_session(runtime: NBQClient, state: LiveState) -> None:
     state.state_version = session.versions.state_version
 
 
-def test_21_first_turn_proposes_questions(runtime: NBQClient, state: LiveState) -> None:
+def test_21_first_turn_proposes_questions(runtime: ZelinqaClient, state: LiveState) -> None:
     assert state.session is not None
     decision = runtime.next(
         state.session.session_id,
@@ -594,7 +608,7 @@ def test_21_first_turn_proposes_questions(runtime: NBQClient, state: LiveState) 
 
 
 def test_22_replaying_the_same_call_replays_the_answer(
-    runtime: NBQClient, state: LiveState
+    runtime: ZelinqaClient, state: LiveState
 ) -> None:
     """Same key and same body: the original response, without a second effect."""
 
@@ -614,9 +628,11 @@ def test_22_replaying_the_same_call_replays_the_answer(
     assert replay.versions.state_version == state.state_version
 
 
-def test_23_the_same_key_with_another_body_is_refused(runtime: NBQClient, state: LiveState) -> None:
+def test_23_the_same_key_with_another_body_is_refused(
+    runtime: ZelinqaClient, state: LiveState
+) -> None:
     assert state.session is not None
-    with pytest.raises(NBQIdempotencyKeyReusedError) as captured:
+    with pytest.raises(ZelinqaIdempotencyKeyReusedError) as captured:
         runtime.next(
             state.session.session_id,
             state_version=state.state_version,
@@ -627,9 +643,9 @@ def test_23_the_same_key_with_another_body_is_refused(runtime: NBQClient, state:
     assert captured.value.status_code == 409
 
 
-def test_24_a_stale_state_version_conflicts(runtime: NBQClient, state: LiveState) -> None:
+def test_24_a_stale_state_version_conflicts(runtime: ZelinqaClient, state: LiveState) -> None:
     assert state.session is not None
-    with pytest.raises(NBQStateVersionConflictError) as captured:
+    with pytest.raises(ZelinqaStateVersionConflictError) as captured:
         runtime.next(state.session.session_id, state_version=0)
 
     error = captured.value
@@ -642,7 +658,7 @@ def test_24_a_stale_state_version_conflicts(runtime: NBQClient, state: LiveState
     assert error.current_state_version == state.state_version
 
 
-def test_25_second_turn_understands_a_free_answer(runtime: NBQClient, state: LiveState) -> None:
+def test_25_second_turn_understands_a_free_answer(runtime: ZelinqaClient, state: LiveState) -> None:
     assert state.session is not None
     session = runtime.resume_session(state.session.session_id)
     assert session.pending_decision is not None
@@ -666,7 +682,9 @@ def test_25_second_turn_understands_a_free_answer(runtime: NBQClient, state: Liv
     time.sleep(NEXT_CALL_PAUSE_SECONDS)
 
 
-def test_26_third_turn_answers_a_structured_question(runtime: NBQClient, state: LiveState) -> None:
+def test_26_third_turn_answers_a_structured_question(
+    runtime: ZelinqaClient, state: LiveState
+) -> None:
     """Answer with choice ids when a choice question is on the table.
 
     Falls back to free text otherwise: the engine ranks, the test does not get
@@ -699,7 +717,7 @@ def test_26_third_turn_answers_a_structured_question(runtime: NBQClient, state: 
 
 
 def test_27_client_updates_confirm_a_success_information(
-    runtime: NBQClient, state: LiveState
+    runtime: ZelinqaClient, state: LiveState
 ) -> None:
     assert state.session is not None
     updated = runtime.apply_events(
@@ -720,7 +738,7 @@ def test_27_client_updates_confirm_a_success_information(
     state.state_version = updated.versions.state_version
 
 
-def test_28_a_context_summary_is_accepted(runtime: NBQClient, state: LiveState) -> None:
+def test_28_a_context_summary_is_accepted(runtime: ZelinqaClient, state: LiveState) -> None:
     assert state.session is not None
     updated = runtime.apply_events(
         state.session.session_id,
@@ -735,7 +753,7 @@ def test_28_a_context_summary_is_accepted(runtime: NBQClient, state: LiveState) 
     state.state_version = updated.versions.state_version
 
 
-def test_29_get_session_returns_a_resumable_state(runtime: NBQClient, state: LiveState) -> None:
+def test_29_get_session_returns_a_resumable_state(runtime: ZelinqaClient, state: LiveState) -> None:
     assert state.session is not None
     session = runtime.get_session(state.session.session_id)
     state.note("get_session", session.request_id)
@@ -752,7 +770,7 @@ def test_29_get_session_returns_a_resumable_state(runtime: NBQClient, state: Liv
         assert all(c.question_id in QUESTION_IDS for c in session.pending_decision.candidates)
 
 
-def test_30_feedback_is_recorded_once(runtime: NBQClient, state: LiveState) -> None:
+def test_30_feedback_is_recorded_once(runtime: ZelinqaClient, state: LiveState) -> None:
     assert state.session is not None
     first = runtime.submit_feedback(
         state.session.session_id,
@@ -774,8 +792,8 @@ def test_30_feedback_is_recorded_once(runtime: NBQClient, state: LiveState) -> N
     assert replay.feedback_id == first.feedback_id
 
 
-def test_31_an_unknown_session_is_a_404_envelope(runtime: NBQClient) -> None:
-    with pytest.raises(NBQUnknownSessionError) as captured:
+def test_31_an_unknown_session_is_a_404_envelope(runtime: ZelinqaClient) -> None:
+    with pytest.raises(ZelinqaUnknownSessionError) as captured:
         runtime.get_session("ses_does_not_exist")
 
     error = captured.value
@@ -788,8 +806,8 @@ def test_31_an_unknown_session_is_a_404_envelope(runtime: NBQClient) -> None:
 
 
 def test_32_an_invalid_key_is_refused_by_the_gateway() -> None:
-    with NBQClient("nbq_live_invalid", base_url=_base_url()) as client:
-        with pytest.raises(NBQAuthenticationError) as captured:
+    with ZelinqaClient("nbq_live_invalid", base_url=_base_url()) as client:
+        with pytest.raises(ZelinqaAuthenticationError) as captured:
             client.get_session("ses_does_not_exist")
     print(f"  status={captured.value.status_code} code={captured.value.code}")
     assert captured.value.status_code == 403
@@ -797,8 +815,8 @@ def test_32_an_invalid_key_is_refused_by_the_gateway() -> None:
 
 
 def test_33_a_revoked_key_is_refused_by_the_gateway() -> None:
-    with NBQClient(_key("NBQ_LIVE_REVOKED_KEY"), base_url=_base_url()) as client:
-        with pytest.raises(NBQAuthenticationError) as captured:
+    with ZelinqaClient(_key("ZELINQA_LIVE_REVOKED_KEY"), base_url=_base_url()) as client:
+        with pytest.raises(ZelinqaAuthenticationError) as captured:
             client.get_session("ses_does_not_exist")
     print(f"  status={captured.value.status_code} code={captured.value.code}")
     assert captured.value.status_code == 403
@@ -826,3 +844,37 @@ def test_36_every_scenario_reported_a_request_id(state: LiveState) -> None:
     print(f"  request ids recorded: {len(state.request_ids)}")
     assert all(request_id for request_id in state.request_ids)
     assert len(state.request_ids) == len(set(state.request_ids)), "a request id was reused"
+
+
+def test_37_managed_session_answers_without_manual_ids(runtime: ZelinqaClient) -> None:
+    session = runtime.start_session(client_reference="sdk-python-managed-recipe")
+    first = session.next()
+    candidate = first.candidates[0]
+    if candidate.choices:
+        answer = session.answer(choice_labels=[candidate.choices[0].label])
+    else:
+        answer = session.answer("Pour aménager mon salon avec un canapé confortable.")
+    assert answer.turn_count > first.turn_count
+    resumed = runtime.resume_session(session.id)
+    assert resumed.state_version == session.state_version
+    feedback = resumed.submit_feedback(result="success", label="sdk-python-managed-recipe")
+    assert feedback.feedback_id
+
+
+async def test_38_async_managed_session_answers_without_manual_ids() -> None:
+    from zelinqa import AsyncZelinqaClient
+
+    async with AsyncZelinqaClient(_key("ZELINQA_LIVE_RUNTIME_KEY"), base_url=_base_url()) as client:
+        session = await client.start_session(client_reference="sdk-async-managed-recipe")
+        first = await session.next()
+        candidate = first.candidates[0]
+        if candidate.choices:
+            answer = await session.answer(choice_labels=[candidate.choices[0].label])
+        else:
+            answer = await session.answer("Pour aménager mon salon avec un canapé confortable.")
+        assert answer.turn_count > first.turn_count
+        resumed = await client.resume_session(session.id)
+        assert resumed.state_version == session.state_version
+        assert (
+            await resumed.submit_feedback(result="success", label="sdk-async-managed-recipe")
+        ).feedback_id
