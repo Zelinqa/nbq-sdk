@@ -1,26 +1,26 @@
 /**
- * Live acceptance suite of `@zelinqa/nbq` 1.0.0 against the staging API.
+ * Live acceptance suite of `@zelinqa/sdk` 1.0.0 against the staging API.
  *
- * Opt-in: the whole file is skipped unless `NBQ_LIVE=1`. It runs against the
- * throwaway NBQ "SDK MCP V1 Recette" and is re-runnable — the corpus is upserted
+ * Opt-in: the whole file is skipped unless `ZELINQA_LIVE=1`. It runs against the
+ * throwaway Zelinqa "SDK MCP V1 Recette" and is re-runnable — the corpus is upserted
  * (`create` what is missing, `update` what exists) rather than recreated.
  *
  * Keys are least privilege and deliberately split, because the deployed gateway
  * makes the difference observable:
- * - `NBQ_LIVE_CONFIG_MANAGE_KEY` (read + write + publish) reads the DRAFT, which
+ * - `ZELINQA_LIVE_CONFIG_MANAGE_KEY` (read + write + publish) reads the DRAFT, which
  *   needs `configuration:read` for the authorizer AND `configuration:write` for
  *   the service's dynamic check;
- * - `NBQ_LIVE_CONFIG_READ_KEY` reads the published corpus, paginates and exports;
- * - `NBQ_LIVE_CONFIG_WRITE_KEY` proves a write-only key can apply changes;
- * - `NBQ_LIVE_CONFIG_PUBLISH_KEY` publishes and reads the audit log;
- * - `NBQ_LIVE_RUNTIME_KEY` drives the conversation.
+ * - `ZELINQA_LIVE_CONFIG_READ_KEY` reads the published corpus, paginates and exports;
+ * - `ZELINQA_LIVE_CONFIG_WRITE_KEY` proves a write-only key can apply changes;
+ * - `ZELINQA_LIVE_CONFIG_PUBLISH_KEY` publishes and reads the audit log;
+ * - `ZELINQA_LIVE_RUNTIME_KEY` drives the conversation.
  *
  * Never logs a key, a header or a verbatim: only request ids and error codes.
- * `next` calls are spaced by one second to respect the Bedrock quota (10 RPM).
+ * `next` calls are spaced for a small functional recipe, not a throughput test.
  *
- *   NBQ_LIVE=1 \
- *   NBQ_LIVE_RUNTIME_KEY=… NBQ_LIVE_CONFIG_READ_KEY=… NBQ_LIVE_CONFIG_WRITE_KEY=… \
- *   NBQ_LIVE_CONFIG_PUBLISH_KEY=… NBQ_LIVE_CONFIG_MANAGE_KEY=… NBQ_LIVE_REVOKED_KEY=… \
+ *   ZELINQA_LIVE=1 \
+ *   ZELINQA_LIVE_RUNTIME_KEY=… ZELINQA_LIVE_CONFIG_READ_KEY=… ZELINQA_LIVE_CONFIG_WRITE_KEY=… \
+ *   ZELINQA_LIVE_CONFIG_PUBLISH_KEY=… ZELINQA_LIVE_CONFIG_MANAGE_KEY=… ZELINQA_LIVE_REVOKED_KEY=… \
  *   pnpm test:live
  */
 import { beforeAll, describe, expect, it } from "vitest";
@@ -31,39 +31,39 @@ import {
   type ConfigurationChange,
   type ConfigurationResponse,
   type ConfiguredQuestion,
-  NBQAuthenticationError,
-  NBQClient,
-  NBQCompilationInProgressError,
-  NBQConfigurationClient,
-  NBQIdempotencyKeyReusedError,
-  NBQInsufficientScopeError,
-  NBQStateVersionConflictError,
-  NBQUnknownConfigurationError,
-  NBQUnknownSessionError,
+  type Dimension,
   type NextResponse,
   type Objective,
   type SessionState,
-  type SubObjective,
   type SuccessInformation,
+  ZelinqaAuthenticationError,
+  ZelinqaClient,
+  ZelinqaCompilationInProgressError,
+  ZelinqaConfigurationClient,
+  ZelinqaIdempotencyKeyReusedError,
+  ZelinqaInsufficientScopeError,
+  ZelinqaStateVersionConflictError,
+  ZelinqaUnknownConfigurationError,
+  ZelinqaUnknownSessionError,
 } from "../../src/index.js";
 
-const LIVE = process.env.NBQ_LIVE === "1";
-const BASE_URL = process.env.NBQ_LIVE_BASE_URL ?? "https://api.zelinqa.ai";
+const LIVE = process.env.ZELINQA_LIVE === "1";
+const BASE_URL = process.env.ZELINQA_LIVE_BASE_URL ?? "https://api.zelinqa.ai";
 const RUN_ID = `sdkts${Date.now().toString(36)}`;
 
 const REQUIRED_ENV = [
-  "NBQ_LIVE_RUNTIME_KEY",
-  "NBQ_LIVE_CONFIG_READ_KEY",
-  "NBQ_LIVE_CONFIG_WRITE_KEY",
-  "NBQ_LIVE_CONFIG_PUBLISH_KEY",
-  "NBQ_LIVE_CONFIG_MANAGE_KEY",
-  "NBQ_LIVE_REVOKED_KEY",
+  "ZELINQA_LIVE_RUNTIME_KEY",
+  "ZELINQA_LIVE_CONFIG_READ_KEY",
+  "ZELINQA_LIVE_CONFIG_WRITE_KEY",
+  "ZELINQA_LIVE_CONFIG_PUBLISH_KEY",
+  "ZELINQA_LIVE_CONFIG_MANAGE_KEY",
+  "ZELINQA_LIVE_REVOKED_KEY",
 ] as const;
 
 function requireEnv(name: (typeof REQUIRED_ENV)[number]): string {
   const value = process.env[name];
   if (value === undefined || value.trim() === "") {
-    throw new Error(`${name} is required when NBQ_LIVE=1`);
+    throw new Error(`${name} is required when ZELINQA_LIVE=1`);
   }
   return value;
 }
@@ -90,14 +90,14 @@ function sleep(milliseconds: number): Promise<void> {
 
 const OBJECTIVE: Objective = {
   name: "SDK MCP V1 Recette",
-  description: "NBQ jetable pour la recette des SDK et du serveur MCP.",
+  description: "Zelinqa jetable pour la recette des SDK et du serveur MCP.",
   qualification_level: "balanced",
   max_turns: 8,
   candidates_per_call: 2,
   order_strength: 0.35,
 };
 
-const SUB_OBJECTIVES: readonly SubObjective[] = [
+const SUB_OBJECTIVES: readonly Dimension[] = [
   { id: "sdk_so_besoin", name: "Besoin", order_position: 0, completion_role: "blocking" },
   { id: "sdk_so_budget", name: "Budget", order_position: 1, completion_role: "blocking" },
   { id: "sdk_so_delai", name: "Délai", order_position: 2, completion_role: "contributing" },
@@ -108,7 +108,9 @@ const QUESTIONS: readonly ConfiguredQuestion[] = [
     id: "sdk_q_usage",
     text: "Pour quel usage cherchez-vous ce canapé ?",
     type: "open",
-    sub_objective_id: "sdk_so_besoin",
+    selection_mode: null,
+    source: "user",
+    dimension_id: "sdk_so_besoin",
     active: true,
     choices: [],
   },
@@ -116,7 +118,9 @@ const QUESTIONS: readonly ConfiguredQuestion[] = [
     id: "sdk_q_style",
     text: "Quel style préférez-vous ?",
     type: "single_choice",
-    sub_objective_id: "sdk_so_besoin",
+    selection_mode: "single",
+    source: "user",
+    dimension_id: "sdk_so_besoin",
     active: true,
     choices: [
       { id: "sdk_c_contemporain", label: "Contemporain", maps_to_value: "contemporain" },
@@ -128,7 +132,9 @@ const QUESTIONS: readonly ConfiguredQuestion[] = [
     id: "sdk_q_budget",
     text: "Quel budget envisagez-vous ?",
     type: "open",
-    sub_objective_id: "sdk_so_budget",
+    selection_mode: null,
+    source: "user",
+    dimension_id: "sdk_so_budget",
     active: true,
     choices: [],
   },
@@ -136,7 +142,9 @@ const QUESTIONS: readonly ConfiguredQuestion[] = [
     id: "sdk_q_delai",
     text: "Quand souhaitez-vous être livré ?",
     type: "single_choice",
-    sub_objective_id: "sdk_so_delai",
+    selection_mode: "single",
+    source: "user",
+    dimension_id: "sdk_so_delai",
     active: true,
     choices: [
       { id: "sdk_c_1m", label: "Dans le mois", maps_to_value: "dans_le_mois" },
@@ -148,7 +156,9 @@ const QUESTIONS: readonly ConfiguredQuestion[] = [
     id: "sdk_q_animaux",
     text: "Avez-vous des animaux ?",
     type: "single_choice",
-    sub_objective_id: "sdk_so_besoin",
+    selection_mode: "single",
+    source: "user",
+    dimension_id: "sdk_so_besoin",
     active: true,
     choices: [
       { id: "sdk_c_oui", label: "Oui", maps_to_value: true },
@@ -184,9 +194,9 @@ const SUCCESS_INFORMATIONS: readonly SuccessInformation[] = [
   },
 ];
 
-/** Sub-objectives first, then questions, then the informations they collect. */
+/** Dimensions first, then questions, then the informations they collect. */
 function upsertChanges(baseline: ConfigurationResponse | undefined): ConfigurationChange[] {
-  const knownSubObjectives = new Set((baseline?.sub_objectives ?? []).map((entry) => entry.id));
+  const knownDimensions = new Set((baseline?.dimensions ?? []).map((entry) => entry.id));
   const knownQuestions = new Set((baseline?.questions ?? []).map((entry) => entry.id));
   const knownInformations = new Set(
     (baseline?.success_informations ?? []).map((entry) => entry.id),
@@ -194,10 +204,10 @@ function upsertChanges(baseline: ConfigurationResponse | undefined): Configurati
 
   return [
     { entity: "objective", operation: "update", objective: OBJECTIVE },
-    ...SUB_OBJECTIVES.map<ConfigurationChange>((sub_objective) => ({
-      entity: "sub_objective",
-      operation: knownSubObjectives.has(sub_objective.id) ? "update" : "create",
-      sub_objective,
+    ...SUB_OBJECTIVES.map<ConfigurationChange>((dimension) => ({
+      entity: "dimension",
+      operation: knownDimensions.has(dimension.id) ? "update" : "create",
+      dimension,
     })),
     ...QUESTIONS.map<ConfigurationChange>((question) => ({
       entity: "question",
@@ -226,12 +236,12 @@ interface LiveState {
   stateVersion: number;
 }
 
-describe.skipIf(!LIVE).sequential("NBQ Engine V1 — live acceptance", () => {
-  let manage: NBQConfigurationClient;
-  let write: NBQConfigurationClient;
-  let read: NBQConfigurationClient;
-  let publish: NBQConfigurationClient;
-  let runtime: NBQClient;
+describe.skipIf(!LIVE).sequential("Zelinqa V1 — live acceptance", () => {
+  let manage: ZelinqaConfigurationClient;
+  let write: ZelinqaConfigurationClient;
+  let read: ZelinqaConfigurationClient;
+  let publish: ZelinqaConfigurationClient;
+  let runtime: ZelinqaClient;
   const state: LiveState = {
     draftRevision: undefined,
     compilation: undefined,
@@ -245,23 +255,23 @@ describe.skipIf(!LIVE).sequential("NBQ Engine V1 — live acceptance", () => {
       requireEnv(name);
     }
     const shared = { baseUrl: BASE_URL, timeoutMs: 60_000, maxRetries: 2 } as const;
-    manage = new NBQConfigurationClient({
+    manage = new ZelinqaConfigurationClient({
       ...shared,
-      apiKey: requireEnv("NBQ_LIVE_CONFIG_MANAGE_KEY"),
+      apiKey: requireEnv("ZELINQA_LIVE_CONFIG_MANAGE_KEY"),
     });
-    write = new NBQConfigurationClient({
+    write = new ZelinqaConfigurationClient({
       ...shared,
-      apiKey: requireEnv("NBQ_LIVE_CONFIG_WRITE_KEY"),
+      apiKey: requireEnv("ZELINQA_LIVE_CONFIG_WRITE_KEY"),
     });
-    read = new NBQConfigurationClient({
+    read = new ZelinqaConfigurationClient({
       ...shared,
-      apiKey: requireEnv("NBQ_LIVE_CONFIG_READ_KEY"),
+      apiKey: requireEnv("ZELINQA_LIVE_CONFIG_READ_KEY"),
     });
-    publish = new NBQConfigurationClient({
+    publish = new ZelinqaConfigurationClient({
       ...shared,
-      apiKey: requireEnv("NBQ_LIVE_CONFIG_PUBLISH_KEY"),
+      apiKey: requireEnv("ZELINQA_LIVE_CONFIG_PUBLISH_KEY"),
     });
-    runtime = new NBQClient({ ...shared, apiKey: requireEnv("NBQ_LIVE_RUNTIME_KEY") });
+    runtime = new ZelinqaClient({ ...shared, apiKey: requireEnv("ZELINQA_LIVE_RUNTIME_KEY") });
     trace("setup", { base_url: BASE_URL, run_id: RUN_ID });
   });
 
@@ -276,12 +286,12 @@ describe.skipIf(!LIVE).sequential("NBQ Engine V1 — live acceptance", () => {
         draft_revision: baseline.draft_revision,
       });
     } catch (error) {
-      if (!(error instanceof NBQUnknownConfigurationError)) {
+      if (!(error instanceof ZelinqaUnknownConfigurationError)) {
         throw error;
       }
       traceError("draft.absent", error);
       baseline = await manage.getConfiguration().catch((cause: unknown) => {
-        if (cause instanceof NBQUnknownConfigurationError) {
+        if (cause instanceof ZelinqaUnknownConfigurationError) {
           return undefined;
         }
         throw cause;
@@ -342,9 +352,9 @@ describe.skipIf(!LIVE).sequential("NBQ Engine V1 — live acceptance", () => {
     const error = await read.getConfiguration({ state: "draft" }).catch((cause: unknown) => cause);
 
     traceError("draft.read_key", error);
-    expect(error).toBeInstanceOf(NBQInsufficientScopeError);
-    expect((error as NBQInsufficientScopeError).code).toBe("insufficient_scope");
-    expect((error as NBQInsufficientScopeError).statusCode).toBe(403);
+    expect(error).toBeInstanceOf(ZelinqaInsufficientScopeError);
+    expect((error as ZelinqaInsufficientScopeError).code).toBe("insufficient_scope");
+    expect((error as ZelinqaInsufficientScopeError).statusCode).toBe(403);
   });
 
   it("refuses the draft to a write-only key at the gateway", async () => {
@@ -354,10 +364,10 @@ describe.skipIf(!LIVE).sequential("NBQ Engine V1 — live acceptance", () => {
     const error = await write.getConfiguration({ state: "draft" }).catch((cause: unknown) => cause);
 
     traceError("draft.write_key", error);
-    expect(error).toBeInstanceOf(NBQAuthenticationError);
-    expect(error).not.toBeInstanceOf(NBQInsufficientScopeError);
-    expect((error as NBQAuthenticationError).statusCode).toBe(403);
-    expect((error as NBQAuthenticationError).code).toBeUndefined();
+    expect(error).toBeInstanceOf(ZelinqaAuthenticationError);
+    expect(error).not.toBeInstanceOf(ZelinqaInsufficientScopeError);
+    expect((error as ZelinqaAuthenticationError).statusCode).toBe(403);
+    expect((error as ZelinqaAuthenticationError).code).toBeUndefined();
   });
 
   /* -- 3. publish, conflict, wait, audit ------------------------------------ */
@@ -376,7 +386,7 @@ describe.skipIf(!LIVE).sequential("NBQ Engine V1 — live acceptance", () => {
     const second = await publish
       .publish({}, { idempotencyKey: `${RUN_ID}-publish-2` })
       .catch((cause: unknown) => cause);
-    if (second instanceof NBQCompilationInProgressError) {
+    if (second instanceof ZelinqaCompilationInProgressError) {
       traceError("publish.conflict", second);
       expect(second.compilationId).toBeDefined();
     } else {
@@ -414,8 +424,8 @@ describe.skipIf(!LIVE).sequential("NBQ Engine V1 — live acceptance", () => {
 
     const error = await read.listAudit().catch((cause: unknown) => cause);
     traceError("audit.read_key", error);
-    expect(error).toBeInstanceOf(NBQAuthenticationError);
-    expect((error as NBQAuthenticationError).statusCode).toBe(403);
+    expect(error).toBeInstanceOf(ZelinqaAuthenticationError);
+    expect((error as ZelinqaAuthenticationError).statusCode).toBe(403);
   });
 
   /* -- 4. published reads: pagination, filters, csv, compilation ------------ */
@@ -459,10 +469,10 @@ describe.skipIf(!LIVE).sequential("NBQ Engine V1 — live acceptance", () => {
     }
     expect(new Set(iterated)).toEqual(new Set(paginated));
 
-    const bySubObjective = await read.listQuestions({ sub_objective_id: "sdk_so_besoin" });
-    expect(bySubObjective.questions.length).toBeGreaterThan(0);
-    for (const question of bySubObjective.questions) {
-      expect(question.sub_objective_id).toBe("sdk_so_besoin");
+    const byDimension = await read.listQuestions({ dimension_id: "sdk_so_besoin" });
+    expect(byDimension.questions.length).toBeGreaterThan(0);
+    for (const question of byDimension.questions) {
+      expect(question.dimension_id).toBe("sdk_so_besoin");
     }
 
     const byType = await read.listQuestions({ type: "single_choice" });
@@ -474,7 +484,9 @@ describe.skipIf(!LIVE).sequential("NBQ Engine V1 — live acceptance", () => {
     expect(bySearch.questions.map((question) => question.id)).toContain("sdk_q_budget");
 
     const csv = await read.exportQuestionsCsv();
-    expect(csv.split("\n")[0]?.trim()).toBe("id,text,type,choices,sub_objective_id,active");
+    expect(csv.split("\n")[0]?.trim()).toBe(
+      "id,text,type,selection_mode,choices,source,dimension_id,active",
+    );
     expect(csv).toContain("sdk_q_style");
 
     const compilationId = state.compilation?.compilation_id;
@@ -493,18 +505,18 @@ describe.skipIf(!LIVE).sequential("NBQ Engine V1 — live acceptance", () => {
       .publish({}, { idempotencyKey: `${RUN_ID}-publish-forbidden` })
       .catch((cause: unknown) => cause);
     traceError("publish.write_key", publishError);
-    expect(publishError).toBeInstanceOf(NBQAuthenticationError);
-    expect((publishError as NBQAuthenticationError).statusCode).toBe(403);
+    expect(publishError).toBeInstanceOf(ZelinqaAuthenticationError);
+    expect((publishError as ZelinqaAuthenticationError).statusCode).toBe(403);
 
-    const runtimeAsConfig = new NBQConfigurationClient({
-      apiKey: requireEnv("NBQ_LIVE_RUNTIME_KEY"),
+    const runtimeAsConfig = new ZelinqaConfigurationClient({
+      apiKey: requireEnv("ZELINQA_LIVE_RUNTIME_KEY"),
       baseUrl: BASE_URL,
       maxRetries: 0,
     });
     const configError = await runtimeAsConfig.getConfiguration().catch((cause: unknown) => cause);
     traceError("configuration.runtime_key", configError);
-    expect(configError).toBeInstanceOf(NBQAuthenticationError);
-    expect((configError as NBQAuthenticationError).statusCode).toBe(403);
+    expect(configError).toBeInstanceOf(ZelinqaAuthenticationError);
+    expect((configError as ZelinqaAuthenticationError).statusCode).toBe(403);
   });
 
   /* -- 6. runtime: full conversation --------------------------------------- */
@@ -570,7 +582,7 @@ describe.skipIf(!LIVE).sequential("NBQ Engine V1 — live acceptance", () => {
       )
       .catch((cause: unknown) => cause);
     traceError("next.key_reused", reused);
-    expect(reused).toBeInstanceOf(NBQIdempotencyKeyReusedError);
+    expect(reused).toBeInstanceOf(ZelinqaIdempotencyKeyReusedError);
   });
 
   it("rejects a stale state_version", async () => {
@@ -585,8 +597,10 @@ describe.skipIf(!LIVE).sequential("NBQ Engine V1 — live acceptance", () => {
       .catch((cause: unknown) => cause);
 
     traceError("next.stale_version", error);
-    expect(error).toBeInstanceOf(NBQStateVersionConflictError);
-    expect((error as NBQStateVersionConflictError).currentStateVersion).toBe(state.stateVersion);
+    expect(error).toBeInstanceOf(ZelinqaStateVersionConflictError);
+    expect((error as ZelinqaStateVersionConflictError).currentStateVersion).toBe(
+      state.stateVersion,
+    );
   });
 
   it("plays a second and a third turn", async () => {
@@ -736,32 +750,32 @@ describe.skipIf(!LIVE).sequential("NBQ Engine V1 — live acceptance", () => {
     const error = await runtime.getSession("ses_does_not_exist").catch((cause: unknown) => cause);
 
     traceError("session.unknown", error);
-    expect(error).toBeInstanceOf(NBQUnknownSessionError);
-    expect((error as NBQUnknownSessionError).statusCode).toBe(404);
+    expect(error).toBeInstanceOf(ZelinqaUnknownSessionError);
+    expect((error as ZelinqaUnknownSessionError).statusCode).toBe(404);
   });
 
   /* -- 7. authentication --------------------------------------------------- */
 
   it("rejects an invalid key, a revoked key and a missing header", async () => {
-    const invalid = new NBQClient({
+    const invalid = new ZelinqaClient({
       apiKey: "nbq_live_invalid",
       baseUrl: BASE_URL,
       maxRetries: 0,
     });
     const invalidError = await invalid.createSession().catch((cause: unknown) => cause);
     traceError("auth.invalid_key", invalidError);
-    expect(invalidError).toBeInstanceOf(NBQAuthenticationError);
-    expect((invalidError as NBQAuthenticationError).statusCode).toBe(403);
+    expect(invalidError).toBeInstanceOf(ZelinqaAuthenticationError);
+    expect((invalidError as ZelinqaAuthenticationError).statusCode).toBe(403);
 
-    const revoked = new NBQClient({
-      apiKey: requireEnv("NBQ_LIVE_REVOKED_KEY"),
+    const revoked = new ZelinqaClient({
+      apiKey: requireEnv("ZELINQA_LIVE_REVOKED_KEY"),
       baseUrl: BASE_URL,
       maxRetries: 0,
     });
     const revokedError = await revoked.createSession().catch((cause: unknown) => cause);
     traceError("auth.revoked_key", revokedError);
-    expect(revokedError).toBeInstanceOf(NBQAuthenticationError);
-    expect((revokedError as NBQAuthenticationError).statusCode).toBe(403);
+    expect(revokedError).toBeInstanceOf(ZelinqaAuthenticationError);
+    expect((revokedError as ZelinqaAuthenticationError).statusCode).toBe(403);
 
     const anonymous = await fetch(`${BASE_URL}/v1/sessions`, {
       method: "POST",

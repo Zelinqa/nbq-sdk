@@ -1,15 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  NBQClient,
-  NBQStateVersionConflictError,
-  NBQUnknownSessionError,
   type NextRequest,
   Session,
   type SessionCreateRequest,
   type SessionEventsRequest,
   type SessionState,
   VERSION,
+  ZelinqaClient,
+  ZelinqaStateVersionConflictError,
+  ZelinqaUnknownSessionError,
 } from "../src/index.js";
 import {
   at,
@@ -29,11 +29,11 @@ const DECISION_NORMALE = sharedExample("DecisionNormale");
 const ARRET_SANS_QUESTION = sharedExample("ArretSansQuestion");
 const FEEDBACK_202 = responseExample("/v1/sessions/{session_id}/feedback", "post", "202");
 
-function client(fetch: ReturnType<typeof recordFetch>["fetch"], maxRetries = 0): NBQClient {
-  return new NBQClient({ apiKey: TEST_API_KEY, baseUrl: TEST_BASE_URL, maxRetries, fetch });
+function client(fetch: ReturnType<typeof recordFetch>["fetch"], maxRetries = 0): ZelinqaClient {
+  return new ZelinqaClient({ apiKey: TEST_API_KEY, baseUrl: TEST_BASE_URL, maxRetries, fetch });
 }
 
-describe("NBQClient.createSession", () => {
+describe("ZelinqaClient.createSession", () => {
   it("posts the contract body with the mandatory headers", async () => {
     const recorder = recordFetch([() => jsonResponse(SESSION_NEUVE, { status: 201 })]);
     const body = requestExample(
@@ -55,7 +55,7 @@ describe("NBQClient.createSession", () => {
       Accept: "application/json",
       "Content-Type": "application/json",
       "Idempotency-Key": "create-session-8842",
-      "User-Agent": `nbq-typescript/${VERSION}`,
+      "User-Agent": `zelinqa-typescript/${VERSION}`,
     });
     expect(parseBody(request)).toEqual(body);
     expect(state).toEqual(SESSION_NEUVE);
@@ -94,7 +94,7 @@ describe("NBQClient.createSession", () => {
   });
 });
 
-describe("NBQClient.next", () => {
+describe("ZelinqaClient.next", () => {
   it("posts the structured-answer body and returns the contract decision", async () => {
     const recorder = recordFetch([() => jsonResponse(DECISION_NORMALE)]);
     const body = requestExample(
@@ -141,7 +141,7 @@ describe("NBQClient.next", () => {
   });
 });
 
-describe("NBQClient.applyEvents", () => {
+describe("ZelinqaClient.applyEvents", () => {
   it("posts to /events with the contract body", async () => {
     const recorder = recordFetch([() => jsonResponse(SESSION_NEUVE)]);
     const body = requestExample(
@@ -161,7 +161,7 @@ describe("NBQClient.applyEvents", () => {
   });
 });
 
-describe("NBQClient.getSession", () => {
+describe("ZelinqaClient.getSession", () => {
   it("reads the session without a body, a content type or an idempotency key", async () => {
     const recorder = recordFetch([() => jsonResponse(SESSION_NEUVE)]);
 
@@ -176,24 +176,24 @@ describe("NBQClient.getSession", () => {
     expect(state).toEqual(SESSION_NEUVE);
   });
 
-  it("maps an unknown session to NBQUnknownSessionError", async () => {
+  it("maps an unknown session to ZelinqaUnknownSessionError", async () => {
     const payload = errorExample("UnknownSession");
     const recorder = recordFetch([() => jsonResponse(payload, { status: 404 })]);
 
     await expect(client(recorder.fetch).getSession("ses_inconnue")).rejects.toBeInstanceOf(
-      NBQUnknownSessionError,
+      ZelinqaUnknownSessionError,
     );
   });
 });
 
-describe("NBQClient.submitFeedback", () => {
+describe("ZelinqaClient.submitFeedback", () => {
   it("posts the feedback and returns the 202 body", async () => {
     const recorder = recordFetch([() => jsonResponse(FEEDBACK_202, { status: 202 })]);
     const body = requestExample("/v1/sessions/{session_id}/feedback", "post", "succes");
 
     const response = await client(recorder.fetch).submitFeedback(
       "ses_01J8Z",
-      body as unknown as Parameters<NBQClient["submitFeedback"]>[1],
+      body as unknown as Parameters<ZelinqaClient["submitFeedback"]>[1],
       { idempotencyKey: "feedback-ses01J8Z" },
     );
 
@@ -330,8 +330,8 @@ describe("Session handle", () => {
 
     const error = await session.next().catch((cause: unknown) => cause);
 
-    expect(error).toBeInstanceOf(NBQStateVersionConflictError);
-    const conflictError = error as NBQStateVersionConflictError;
+    expect(error).toBeInstanceOf(ZelinqaStateVersionConflictError);
+    const conflictError = error as ZelinqaStateVersionConflictError;
     expect(conflictError.suppliedStateVersion).toBe(7);
     expect(conflictError.currentStateVersion).toBe(8);
     expect(conflictError.code).toBe("state_version_conflict");
@@ -340,21 +340,21 @@ describe("Session handle", () => {
   });
 });
 
-describe("NBQClient construction", () => {
+describe("ZelinqaClient construction", () => {
   it("validates its options and never prints the key", () => {
     const fetch = vi.fn();
-    expect(() => new NBQClient({ apiKey: "  ", fetch })).toThrow(TypeError);
-    expect(() => new NBQClient({ apiKey: "k", baseUrl: "nope", fetch })).toThrow(TypeError);
-    expect(() => new NBQClient({ apiKey: "k", baseUrl: "https://u:p@x.test", fetch })).toThrow(
+    expect(() => new ZelinqaClient({ apiKey: "  ", fetch })).toThrow(TypeError);
+    expect(() => new ZelinqaClient({ apiKey: "k", baseUrl: "nope", fetch })).toThrow(TypeError);
+    expect(() => new ZelinqaClient({ apiKey: "k", baseUrl: "https://u:p@x.test", fetch })).toThrow(
       /credentials/,
     );
-    expect(() => new NBQClient({ apiKey: "k", baseUrl: "https://x.test?a=1", fetch })).toThrow(
+    expect(() => new ZelinqaClient({ apiKey: "k", baseUrl: "https://x.test?a=1", fetch })).toThrow(
       /query string/,
     );
-    expect(() => new NBQClient({ apiKey: "k", timeoutMs: 0, fetch })).toThrow(TypeError);
-    expect(() => new NBQClient({ apiKey: "k", maxRetries: -1, fetch })).toThrow(TypeError);
+    expect(() => new ZelinqaClient({ apiKey: "k", timeoutMs: 0, fetch })).toThrow(TypeError);
+    expect(() => new ZelinqaClient({ apiKey: "k", maxRetries: -1, fetch })).toThrow(TypeError);
 
-    const runtime = new NBQClient({ apiKey: TEST_API_KEY, baseUrl: TEST_BASE_URL, fetch });
+    const runtime = new ZelinqaClient({ apiKey: TEST_API_KEY, baseUrl: TEST_BASE_URL, fetch });
     expect(runtime.baseUrl).toBe(TEST_BASE_URL);
     expect(String(runtime)).not.toContain(TEST_API_KEY);
     expect(JSON.stringify(runtime)).not.toContain(TEST_API_KEY);

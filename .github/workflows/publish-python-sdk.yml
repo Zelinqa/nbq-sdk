@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       confirm:
-        description: 'Type publish-nbq to confirm the public PyPI release'
+        description: 'Type publish-zelinqa to confirm the public PyPI release'
         required: true
         type: string
 
@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   build-and-test:
-    if: github.ref == 'refs/heads/main' && inputs.confirm == 'publish-nbq'
+    if: github.ref == 'refs/heads/main' && inputs.confirm == 'publish-zelinqa'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -47,7 +47,7 @@ jobs:
       - name: Upload immutable distributions
         uses: actions/upload-artifact@v4
         with:
-          name: nbq-python-distributions
+          name: zelinqa-python-distributions
           path: dist/
           if-no-files-found: error
           retention-days: 7
@@ -62,7 +62,7 @@ jobs:
       - name: Download distributions built by the unprivileged job
         uses: actions/download-artifact@v4
         with:
-          name: nbq-python-distributions
+          name: zelinqa-python-distributions
           path: dist/
 
       - name: Publish with PyPI Trusted Publishing

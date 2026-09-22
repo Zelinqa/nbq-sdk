@@ -3,29 +3,29 @@ import { describe, expect, it, vi } from "vitest";
 import {
   apiErrorFromResponse,
   GATEWAY_FORBIDDEN_MESSAGE,
-  NBQAPIError,
-  NBQAuthenticationError,
-  NBQClient,
-  NBQCompilationInProgressError,
-  NBQCompiledArtifactUnavailableError,
-  NBQConfigurationValidationError,
-  NBQConflictError,
-  NBQConnectionError,
-  NBQConstraintNoMatchError,
-  NBQError,
-  NBQIdempotencyContentionError,
-  NBQIdempotencyKeyReusedError,
-  NBQInsufficientScopeError,
-  NBQInvalidChoiceError,
-  NBQInvalidPreviousTurnError,
-  NBQNotFoundError,
-  NBQRateLimitError,
-  NBQServerError,
-  NBQStateVersionConflictError,
-  NBQUnknownCompilationError,
-  NBQUnknownConfigurationError,
-  NBQUnknownSessionError,
-  NBQValidationError,
+  ZelinqaAPIError,
+  ZelinqaAuthenticationError,
+  ZelinqaClient,
+  ZelinqaCompilationInProgressError,
+  ZelinqaCompiledArtifactUnavailableError,
+  ZelinqaConfigurationValidationError,
+  ZelinqaConflictError,
+  ZelinqaConnectionError,
+  ZelinqaConstraintNoMatchError,
+  ZelinqaError,
+  ZelinqaIdempotencyContentionError,
+  ZelinqaIdempotencyKeyReusedError,
+  ZelinqaInsufficientScopeError,
+  ZelinqaInvalidChoiceError,
+  ZelinqaInvalidPreviousTurnError,
+  ZelinqaNotFoundError,
+  ZelinqaRateLimitError,
+  ZelinqaServerError,
+  ZelinqaStateVersionConflictError,
+  ZelinqaUnknownCompilationError,
+  ZelinqaUnknownConfigurationError,
+  ZelinqaUnknownSessionError,
+  ZelinqaValidationError,
 } from "../src/index.js";
 import {
   at,
@@ -37,31 +37,31 @@ import {
   TEST_BASE_URL,
 } from "./helpers.js";
 
-type Constructor = new (...args: never[]) => NBQAPIError;
+type Constructor = new (...args: never[]) => ZelinqaAPIError;
 
 const BY_CODE: ReadonlyArray<readonly [string, number, Constructor]> = [
-  ["unauthorized", 401, NBQAuthenticationError],
-  ["insufficient_scope", 403, NBQInsufficientScopeError],
-  ["idempotency_contention", 503, NBQIdempotencyContentionError],
-  ["state_version_conflict", 409, NBQStateVersionConflictError],
-  ["idempotency_key_reused", 409, NBQIdempotencyKeyReusedError],
-  ["unknown_session", 404, NBQUnknownSessionError],
-  ["invalid_previous_turn", 422, NBQInvalidPreviousTurnError],
-  ["constraint_no_match", 422, NBQConstraintNoMatchError],
-  ["invalid_choice", 422, NBQInvalidChoiceError],
-  ["compiled_artifact_unavailable", 410, NBQCompiledArtifactUnavailableError],
-  ["configuration_validation_failed", 422, NBQConfigurationValidationError],
-  ["compilation_in_progress", 409, NBQCompilationInProgressError],
-  ["unknown_configuration", 404, NBQUnknownConfigurationError],
-  ["unknown_compilation", 404, NBQUnknownCompilationError],
+  ["unauthorized", 401, ZelinqaAuthenticationError],
+  ["insufficient_scope", 403, ZelinqaInsufficientScopeError],
+  ["idempotency_contention", 503, ZelinqaIdempotencyContentionError],
+  ["state_version_conflict", 409, ZelinqaStateVersionConflictError],
+  ["idempotency_key_reused", 409, ZelinqaIdempotencyKeyReusedError],
+  ["unknown_session", 404, ZelinqaUnknownSessionError],
+  ["invalid_previous_turn", 422, ZelinqaInvalidPreviousTurnError],
+  ["constraint_no_match", 422, ZelinqaConstraintNoMatchError],
+  ["invalid_choice", 422, ZelinqaInvalidChoiceError],
+  ["compiled_artifact_unavailable", 410, ZelinqaCompiledArtifactUnavailableError],
+  ["configuration_validation_failed", 422, ZelinqaConfigurationValidationError],
+  ["compilation_in_progress", 409, ZelinqaCompilationInProgressError],
+  ["unknown_configuration", 404, ZelinqaUnknownConfigurationError],
+  ["unknown_compilation", 404, ZelinqaUnknownCompilationError],
 ];
 
 function envelope(code: string, details: Record<string, unknown> = {}): Record<string, unknown> {
   return { code, message: `message for ${code}`, request_id: `req_${code}`, details };
 }
 
-function client(fetch: ReturnType<typeof recordFetch>["fetch"], maxRetries = 0): NBQClient {
-  return new NBQClient({ apiKey: TEST_API_KEY, baseUrl: TEST_BASE_URL, maxRetries, fetch });
+function client(fetch: ReturnType<typeof recordFetch>["fetch"], maxRetries = 0): ZelinqaClient {
+  return new ZelinqaClient({ apiKey: TEST_API_KEY, baseUrl: TEST_BASE_URL, maxRetries, fetch });
 }
 
 describe("apiErrorFromResponse — envelope codes", () => {
@@ -74,8 +74,8 @@ describe("apiErrorFromResponse — envelope codes", () => {
       const error = apiErrorFromResponse(status, envelope(code));
 
       expect(error).toBeInstanceOf(expected);
-      expect(error).toBeInstanceOf(NBQAPIError);
-      expect(error).toBeInstanceOf(NBQError);
+      expect(error).toBeInstanceOf(ZelinqaAPIError);
+      expect(error).toBeInstanceOf(ZelinqaError);
       expect(error.code).toBe(code);
       expect(error.statusCode).toBe(status);
       expect(error.requestId).toBe(`req_${code}`);
@@ -86,7 +86,7 @@ describe("apiErrorFromResponse — envelope codes", () => {
 
   it("keeps the envelope class even on an unexpected status", () => {
     const error = apiErrorFromResponse(500, envelope("unknown_session"));
-    expect(error).toBeInstanceOf(NBQUnknownSessionError);
+    expect(error).toBeInstanceOf(ZelinqaUnknownSessionError);
     expect(error.statusCode).toBe(500);
   });
 });
@@ -95,7 +95,7 @@ describe("apiErrorFromResponse — gateway refusals", () => {
   it("handles the 401 body sent when the Authorization header is missing", () => {
     const error = apiErrorFromResponse(401, { message: "Unauthorized" });
 
-    expect(error).toBeInstanceOf(NBQAuthenticationError);
+    expect(error).toBeInstanceOf(ZelinqaAuthenticationError);
     expect(error.code).toBeUndefined();
     expect(error.statusCode).toBe(401);
     expect(error.message).toBe("Unauthorized");
@@ -106,31 +106,31 @@ describe("apiErrorFromResponse — gateway refusals", () => {
   it("maps the 403 gateway body to an authentication error", () => {
     const error = apiErrorFromResponse(403, { message: "Forbidden" });
 
-    expect(error).toBeInstanceOf(NBQAuthenticationError);
-    expect(error).not.toBeInstanceOf(NBQInsufficientScopeError);
+    expect(error).toBeInstanceOf(ZelinqaAuthenticationError);
+    expect(error).not.toBeInstanceOf(ZelinqaInsufficientScopeError);
     expect(error.code).toBeUndefined();
     expect(error.statusCode).toBe(403);
     expect(error.message).toBe(GATEWAY_FORBIDDEN_MESSAGE);
     expect(error.details).toEqual({});
   });
 
-  it("keeps NBQInsufficientScopeError for the 403 V1 envelope only", () => {
+  it("keeps ZelinqaInsufficientScopeError for the 403 V1 envelope only", () => {
     const dynamic = apiErrorFromResponse(403, errorExample("InsufficientScope"));
-    expect(dynamic).toBeInstanceOf(NBQInsufficientScopeError);
+    expect(dynamic).toBeInstanceOf(ZelinqaInsufficientScopeError);
     expect(dynamic.code).toBe("insufficient_scope");
 
-    expect(apiErrorFromResponse(403, null)).toBeInstanceOf(NBQAuthenticationError);
+    expect(apiErrorFromResponse(403, null)).toBeInstanceOf(ZelinqaAuthenticationError);
     expect(apiErrorFromResponse(403, "<html>Forbidden</html>")).toBeInstanceOf(
-      NBQAuthenticationError,
+      ZelinqaAuthenticationError,
     );
   });
 
   it("treats any 401 as a credential refusal, whatever the body", () => {
     expect(apiErrorFromResponse(401, envelope("unauthorized"))).toBeInstanceOf(
-      NBQAuthenticationError,
+      ZelinqaAuthenticationError,
     );
     expect(apiErrorFromResponse(401, envelope("insufficient_scope"))).toBeInstanceOf(
-      NBQAuthenticationError,
+      ZelinqaAuthenticationError,
     );
   });
 
@@ -141,22 +141,22 @@ describe("apiErrorFromResponse — gateway refusals", () => {
       new Headers({ "X-Request-Id": "req_gateway" }),
     );
 
-    expect(error).toBeInstanceOf(NBQAuthenticationError);
-    expect(error.message).toBe("NBQ API request failed with status 401");
+    expect(error).toBeInstanceOf(ZelinqaAuthenticationError);
+    expect(error.message).toBe("Zelinqa API request failed with status 401");
     expect(error.requestId).toBe("req_gateway");
   });
 
   it("maps bare statuses without a code", () => {
-    expect(apiErrorFromResponse(404, null)).toBeInstanceOf(NBQNotFoundError);
-    expect(apiErrorFromResponse(409, null)).toBeInstanceOf(NBQConflictError);
-    expect(apiErrorFromResponse(410, null)).toBeInstanceOf(NBQCompiledArtifactUnavailableError);
-    expect(apiErrorFromResponse(422, null)).toBeInstanceOf(NBQValidationError);
-    expect(apiErrorFromResponse(429, null)).toBeInstanceOf(NBQRateLimitError);
-    expect(apiErrorFromResponse(500, null)).toBeInstanceOf(NBQServerError);
-    expect(apiErrorFromResponse(504, null)).toBeInstanceOf(NBQServerError);
+    expect(apiErrorFromResponse(404, null)).toBeInstanceOf(ZelinqaNotFoundError);
+    expect(apiErrorFromResponse(409, null)).toBeInstanceOf(ZelinqaConflictError);
+    expect(apiErrorFromResponse(410, null)).toBeInstanceOf(ZelinqaCompiledArtifactUnavailableError);
+    expect(apiErrorFromResponse(422, null)).toBeInstanceOf(ZelinqaValidationError);
+    expect(apiErrorFromResponse(429, null)).toBeInstanceOf(ZelinqaRateLimitError);
+    expect(apiErrorFromResponse(500, null)).toBeInstanceOf(ZelinqaServerError);
+    expect(apiErrorFromResponse(504, null)).toBeInstanceOf(ZelinqaServerError);
     const teapot = apiErrorFromResponse(418, null);
-    expect(teapot).toBeInstanceOf(NBQAPIError);
-    expect(teapot).not.toBeInstanceOf(NBQValidationError);
+    expect(teapot).toBeInstanceOf(ZelinqaAPIError);
+    expect(teapot).not.toBeInstanceOf(ZelinqaValidationError);
   });
 });
 
@@ -164,8 +164,8 @@ describe("apiErrorFromResponse — detail extraction", () => {
   it("reads the scopes of a 403", () => {
     const error = apiErrorFromResponse(403, errorExample("InsufficientScope"));
 
-    expect(error).toBeInstanceOf(NBQInsufficientScopeError);
-    const scoped = error as NBQInsufficientScopeError;
+    expect(error).toBeInstanceOf(ZelinqaInsufficientScopeError);
+    const scoped = error as ZelinqaInsufficientScopeError;
     expect(scoped.requiredScopes).toEqual(["configuration:publish"]);
     expect(scoped.grantedScopes).toEqual(["configuration:read", "configuration:write"]);
   });
@@ -174,7 +174,7 @@ describe("apiErrorFromResponse — detail extraction", () => {
     const error = apiErrorFromResponse(
       409,
       errorExample("SessionMutationConflict", "state_version_conflict"),
-    ) as NBQStateVersionConflictError;
+    ) as ZelinqaStateVersionConflictError;
 
     expect(error.suppliedStateVersion).toBe(7);
     expect(error.currentStateVersion).toBe(8);
@@ -184,7 +184,7 @@ describe("apiErrorFromResponse — detail extraction", () => {
     const error = apiErrorFromResponse(
       409,
       errorExample("PublishConflict", "compilation_in_progress"),
-    ) as NBQCompilationInProgressError;
+    ) as ZelinqaCompilationInProgressError;
 
     expect(error.compilationId).toBe("cmp_01K2QF");
     expect(error.compilationStatus).toBe("running");
@@ -194,7 +194,7 @@ describe("apiErrorFromResponse — detail extraction", () => {
     const error = apiErrorFromResponse(
       422,
       errorExample("ConfigurationValidationFailed", "revision_perimee"),
-    ) as NBQConfigurationValidationError;
+    ) as ZelinqaConfigurationValidationError;
 
     expect(error.issues).toHaveLength(1);
     expect(at(error.issues, 0).code).toBe("draft_revision_mismatch");
@@ -207,7 +207,7 @@ describe("apiErrorFromResponse — detail extraction", () => {
       message: "nope",
       request_id: "req_x",
       details: { required_scopes: "not-an-array", granted_scopes: [1, "runtime"] },
-    }) as NBQInsufficientScopeError;
+    }) as ZelinqaInsufficientScopeError;
     expect(scoped.requiredScopes).toEqual([]);
     expect(scoped.grantedScopes).toEqual(["runtime"]);
 
@@ -216,7 +216,7 @@ describe("apiErrorFromResponse — detail extraction", () => {
       message: "nope",
       request_id: "req_y",
       details: { issues: [{ code: 1 }, { code: "ok", message: "fine" }] },
-    }) as NBQConfigurationValidationError;
+    }) as ZelinqaConfigurationValidationError;
     expect(validation.issues).toHaveLength(1);
   });
 
@@ -235,7 +235,7 @@ describe("apiErrorFromResponse — detail extraction", () => {
     vi.useRealTimers();
 
     const fromDetails = apiErrorFromResponse(503, errorExample("IdempotencyContention"));
-    expect(fromDetails).toBeInstanceOf(NBQIdempotencyContentionError);
+    expect(fromDetails).toBeInstanceOf(ZelinqaIdempotencyContentionError);
     expect(fromDetails.retryAfter).toBe(1);
 
     expect(apiErrorFromResponse(503, null, new Headers({ "Retry-After": "soon" })).retryAfter).toBe(
@@ -244,7 +244,7 @@ describe("apiErrorFromResponse — detail extraction", () => {
   });
 });
 
-describe("NBQAPIError rendering", () => {
+describe("ZelinqaAPIError rendering", () => {
   it("formats as <code or status>: <message> (request_id=…)", () => {
     expect(String(apiErrorFromResponse(404, envelope("unknown_session")))).toBe(
       "unknown_session: message for unknown_session (request_id=req_unknown_session)",
@@ -253,7 +253,7 @@ describe("NBQAPIError rendering", () => {
       "401: Unauthorized",
     );
     expect(apiErrorFromResponse(404, envelope("unknown_session")).name).toBe(
-      "NBQUnknownSessionError",
+      "ZelinqaUnknownSessionError",
     );
   });
 });
@@ -272,8 +272,8 @@ describe("end to end through the client", () => {
     const error = await promise;
     vi.useRealTimers();
 
-    expect(error).toBeInstanceOf(NBQIdempotencyContentionError);
-    expect((error as NBQIdempotencyContentionError).code).toBe("idempotency_contention");
+    expect(error).toBeInstanceOf(ZelinqaIdempotencyContentionError);
+    expect((error as ZelinqaIdempotencyContentionError).code).toBe("idempotency_contention");
     expect(recorder.requests).toHaveLength(2);
   });
 
@@ -285,12 +285,12 @@ describe("end to end through the client", () => {
       .next("ses_01J8Z", { state_version: 4 })
       .catch((cause: unknown) => cause);
 
-    expect(error).toBeInstanceOf(NBQInvalidPreviousTurnError);
-    expect((error as NBQInvalidPreviousTurnError).details.pending_decision_id).toBe("dec_7f2a");
+    expect(error).toBeInstanceOf(ZelinqaInvalidPreviousTurnError);
+    expect((error as ZelinqaInvalidPreviousTurnError).details.pending_decision_id).toBe("dec_7f2a");
     expect(recorder.requests).toHaveLength(1);
   });
 
-  it("raises NBQConnectionError once the network keeps failing", async () => {
+  it("raises ZelinqaConnectionError once the network keeps failing", async () => {
     vi.useFakeTimers();
     vi.spyOn(Math, "random").mockReturnValue(0);
     const recorder = recordFetch([
@@ -306,8 +306,8 @@ describe("end to end through the client", () => {
     const error = await promise;
     vi.useRealTimers();
 
-    expect(error).toBeInstanceOf(NBQConnectionError);
-    expect((error as NBQConnectionError).message).toBe("Unable to reach the NBQ API");
+    expect(error).toBeInstanceOf(ZelinqaConnectionError);
+    expect((error as ZelinqaConnectionError).message).toBe("Unable to reach the Zelinqa API");
     expect(recorder.requests).toHaveLength(2);
   });
 
@@ -321,9 +321,9 @@ describe("end to end through the client", () => {
       .getSession("ses_01J8Z")
       .catch((cause: unknown) => cause);
 
-    expect(error).toBeInstanceOf(NBQAPIError);
-    expect((error as NBQAPIError).message).toBe("NBQ API returned a non-JSON response");
-    expect((error as NBQAPIError).requestId).toBe("req_z");
+    expect(error).toBeInstanceOf(ZelinqaAPIError);
+    expect((error as ZelinqaAPIError).message).toBe("Zelinqa API returned a non-JSON response");
+    expect((error as ZelinqaAPIError).requestId).toBe("req_z");
   });
 
   it("never leaks the API key into an error, a message or a stack", async () => {
@@ -337,7 +337,7 @@ describe("end to end through the client", () => {
         throw new TypeError(`connect ECONNREFUSED for ${TEST_BASE_URL}`);
       },
     ]);
-    const runtime = new NBQClient({
+    const runtime = new ZelinqaClient({
       apiKey: TEST_API_KEY,
       baseUrl: TEST_BASE_URL,
       maxRetries: 0,

@@ -1,46 +1,47 @@
 /**
- * `@zelinqa/nbq` — official TypeScript SDK for the NBQ Engine V1 API.
+ * `@zelinqa/sdk` — official TypeScript SDK for the Zelinqa V1 API.
  *
  * Two independent clients, one key each, least privilege:
- * - `NBQClient` drives conversations (scope `runtime`);
- * - `NBQConfigurationClient` reads and publishes the question bank
+ * - `ZelinqaClient` drives conversations (scope `runtime`);
+ * - `ZelinqaConfigurationClient` reads and publishes the question bank
  *   (scopes `configuration:read` / `configuration:write` / `configuration:publish`).
  *
- * Backend only. An NBQ key is a bearer credential: never ship it to a browser or
+ * Backend only. A Zelinqa key is a bearer credential: never ship it to a browser or
  * a mobile bundle.
  */
+export { type AnswerInput, answerTurn } from "./answers.js";
 export {
   DEFAULT_COMPILATION_TIMEOUT_MS,
   DEFAULT_POLL_INTERVAL_MS,
-  NBQConfigurationClient,
+  ZelinqaConfigurationClient,
 } from "./configuration.js";
 export {
   apiErrorFromResponse,
   GATEWAY_FORBIDDEN_MESSAGE,
-  NBQAPIError,
-  type NBQAPIErrorOptions,
-  NBQAuthenticationError,
-  NBQCompilationInProgressError,
-  NBQCompilationTimeoutError,
-  NBQCompiledArtifactUnavailableError,
-  NBQConfigurationValidationError,
-  NBQConflictError,
-  NBQConnectionError,
-  NBQConstraintNoMatchError,
-  NBQError,
-  NBQIdempotencyContentionError,
-  NBQIdempotencyKeyReusedError,
-  NBQInsufficientScopeError,
-  NBQInvalidChoiceError,
-  NBQInvalidPreviousTurnError,
-  NBQNotFoundError,
-  NBQRateLimitError,
-  NBQServerError,
-  NBQStateVersionConflictError,
-  NBQUnknownCompilationError,
-  NBQUnknownConfigurationError,
-  NBQUnknownSessionError,
-  NBQValidationError,
+  ZelinqaAPIError,
+  type ZelinqaAPIErrorOptions,
+  ZelinqaAuthenticationError,
+  ZelinqaCompilationInProgressError,
+  ZelinqaCompilationTimeoutError,
+  ZelinqaCompiledArtifactUnavailableError,
+  ZelinqaConfigurationValidationError,
+  ZelinqaConflictError,
+  ZelinqaConnectionError,
+  ZelinqaConstraintNoMatchError,
+  ZelinqaError,
+  ZelinqaIdempotencyContentionError,
+  ZelinqaIdempotencyKeyReusedError,
+  ZelinqaInsufficientScopeError,
+  ZelinqaInvalidChoiceError,
+  ZelinqaInvalidPreviousTurnError,
+  ZelinqaNotFoundError,
+  ZelinqaRateLimitError,
+  ZelinqaServerError,
+  ZelinqaStateVersionConflictError,
+  ZelinqaUnknownCompilationError,
+  ZelinqaUnknownConfigurationError,
+  ZelinqaUnknownSessionError,
+  ZelinqaValidationError,
 } from "./errors.js";
 export {
   DEFAULT_BASE_URL,
@@ -49,10 +50,10 @@ export {
   USER_AGENT,
 } from "./http.js";
 export {
-  NBQClient,
   Session,
   type SessionEventsInput,
   type SessionNextInput,
+  ZelinqaClient,
 } from "./runtime.js";
 export type {
   Candidate,
@@ -81,6 +82,14 @@ export type {
   ConversationMessageDelta,
   ConversationSummary,
   DataClientUpdate,
+  Dimension,
+  DimensionChange,
+  DimensionClientOverrideView,
+  DimensionOverrideUpdate,
+  DimensionOverrideValue,
+  DimensionProgress,
+  DimensionSelection,
+  DomainMetadata,
   ErrorCode,
   ErrorEnvelope,
   FeedbackRequest,
@@ -90,7 +99,6 @@ export type {
   InitialHistoryItem,
   ListAuditQuery,
   ListQuestionsQuery,
-  NBQClientOptions,
   NextRequest,
   NextResponse,
   NotApplicableDataUpdate,
@@ -112,6 +120,8 @@ export type {
   QuestionListResponse,
   QuestionOutcome,
   QuestionOutcomeRecord,
+  QuestionSelectionMode,
+  QuestionSource,
   QuestionType,
   RequestOptions,
   SelectionOptions,
@@ -123,17 +133,11 @@ export type {
   SetDataUpdate,
   StopReason,
   StructuredAnswer,
-  SubObjective,
-  SubObjectiveChange,
-  SubObjectiveClientOverrideView,
-  SubObjectiveOverrideUpdate,
-  SubObjectiveOverrideValue,
-  SubObjectiveProgress,
-  SubObjectiveSelection,
   SuccessInformation,
   SuccessInformationChange,
   UnsetDataUpdate,
   VersionInfo,
   WaitForCompilationOptions,
+  ZelinqaClientOptions,
 } from "./types.js";
 export { VERSION } from "./version.js";

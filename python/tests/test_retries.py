@@ -12,17 +12,17 @@ from wsgiref.handlers import format_date_time
 
 import httpx
 import pytest
-from nbq import (
-    AsyncNBQClient,
-    NBQAPIError,
-    NBQAuthenticationError,
-    NBQConnectionError,
-    NBQRateLimitError,
-    NBQServerError,
-)
-from nbq import _http as http_module
-from nbq import errors as errors_module
 from spec_examples import SESSION_NEUVE, response_example
+from zelinqa import (
+    AsyncZelinqaClient,
+    ZelinqaAPIError,
+    ZelinqaAuthenticationError,
+    ZelinqaConnectionError,
+    ZelinqaRateLimitError,
+    ZelinqaServerError,
+)
+from zelinqa import _http as http_module
+from zelinqa import errors as errors_module
 
 API_KEY = "nbq_live_test"
 BASE_URL = "https://api.example.test"
@@ -76,9 +76,9 @@ def ok(payload: Any = SESSION_NEUVE, status: int = 201) -> httpx.Response:
 
 
 def call_create(handler: Handler, *, max_retries: int = 2, **kwargs: Any) -> Any:
-    from nbq import NBQClient
+    from zelinqa import ZelinqaClient
 
-    with NBQClient(
+    with ZelinqaClient(
         API_KEY,
         base_url=BASE_URL,
         max_retries=max_retries,
@@ -88,9 +88,9 @@ def call_create(handler: Handler, *, max_retries: int = 2, **kwargs: Any) -> Any
 
 
 def call_get(handler: Handler, *, max_retries: int = 2) -> Any:
-    from nbq import NBQClient
+    from zelinqa import ZelinqaClient
 
-    with NBQClient(
+    with ZelinqaClient(
         API_KEY,
         base_url=BASE_URL,
         max_retries=max_retries,
@@ -199,7 +199,7 @@ def test_idempotency_contention_is_retried_on_its_code(slept: list[float]) -> No
 @pytest.mark.parametrize("status", [400, 401, 403, 404, 409, 410, 422])
 def test_client_errors_are_never_retried(status: int, slept: list[float]) -> None:
     handler = Handler(httpx.Response(status, json={"message": "nope"}))
-    with pytest.raises(NBQAPIError) as captured:
+    with pytest.raises(ZelinqaAPIError) as captured:
         call_create(handler, max_retries=3)
 
     assert len(handler.requests) == 1
@@ -209,7 +209,7 @@ def test_client_errors_are_never_retried(status: int, slept: list[float]) -> Non
 
 def test_authentication_error_is_immediate(slept: list[float]) -> None:
     handler = Handler(httpx.Response(401, json={"message": "Unauthorized"}))
-    with pytest.raises(NBQAuthenticationError):
+    with pytest.raises(ZelinqaAuthenticationError):
         call_create(handler, max_retries=5)
     assert len(handler.requests) == 1
     assert slept == []
@@ -229,7 +229,7 @@ def test_authentication_error_is_immediate(slept: list[float]) -> None:
 )
 def test_transport_errors_are_retried_then_wrapped(error: Exception, slept: list[float]) -> None:
     handler = Handler(error)
-    with pytest.raises(NBQConnectionError) as captured:
+    with pytest.raises(ZelinqaConnectionError) as captured:
         call_create(handler, max_retries=2)
 
     assert len(handler.requests) == 3
@@ -252,7 +252,7 @@ def test_a_transport_error_can_recover(slept: list[float]) -> None:
 @pytest.mark.parametrize(("max_retries", "expected"), [(0, 1), (1, 2), (3, 4)])
 def test_max_retries_is_respected(max_retries: int, expected: int, slept: list[float]) -> None:
     handler = Handler(httpx.Response(500, json={"message": "boom"}))
-    with pytest.raises(NBQServerError):
+    with pytest.raises(ZelinqaServerError):
         call_create(handler, max_retries=max_retries)
 
     assert len(handler.requests) == expected
@@ -272,10 +272,10 @@ def test_the_generated_idempotency_key_is_stable_across_retries(slept: list[floa
 
 
 def test_two_logical_calls_use_two_generated_keys() -> None:
-    from nbq import NBQClient
+    from zelinqa import ZelinqaClient
 
     handler = Handler(ok())
-    with NBQClient(
+    with ZelinqaClient(
         API_KEY, base_url=BASE_URL, max_retries=0, transport=httpx.MockTransport(handler)
     ) as instance:
         instance.create_session()
@@ -295,7 +295,7 @@ def test_get_requests_are_retried_too(slept: list[float]) -> None:
 
 def test_rate_limit_raises_once_the_budget_is_spent(slept: list[float]) -> None:
     handler = Handler(httpx.Response(429, json={"message": "slow"}, headers={"Retry-After": "1"}))
-    with pytest.raises(NBQRateLimitError) as captured:
+    with pytest.raises(ZelinqaRateLimitError) as captured:
         call_create(handler, max_retries=1)
 
     assert len(handler.requests) == 2
@@ -341,7 +341,7 @@ def test_retry_delay_stops_on_a_success() -> None:
 
 async def test_async_client_retries_with_the_same_policy(slept: list[float]) -> None:
     handler = Handler(httpx.Response(503, json={"message": "later"}), ok())
-    async with AsyncNBQClient(
+    async with AsyncZelinqaClient(
         API_KEY, base_url=BASE_URL, max_retries=2, transport=httpx.MockTransport(handler)
     ) as instance:
         state = await instance.create_session(idempotency_key="create-session-8842")
@@ -353,10 +353,10 @@ async def test_async_client_retries_with_the_same_policy(slept: list[float]) -> 
 
 async def test_async_transport_errors_are_wrapped(slept: list[float]) -> None:
     handler = Handler(httpx.ConnectError("refused"))
-    async with AsyncNBQClient(
+    async with AsyncZelinqaClient(
         API_KEY, base_url=BASE_URL, max_retries=1, transport=httpx.MockTransport(handler)
     ) as instance:
-        with pytest.raises(NBQConnectionError):
+        with pytest.raises(ZelinqaConnectionError):
             await instance.create_session()
 
     assert len(handler.requests) == 2
@@ -365,7 +365,7 @@ async def test_async_transport_errors_are_wrapped(slept: list[float]) -> None:
 
 async def test_async_client_errors_are_not_retried(slept: list[float]) -> None:
     handler = Handler(httpx.Response(422, json={"message": "nope"}))
-    async with AsyncNBQClient(
+    async with AsyncZelinqaClient(
         API_KEY, base_url=BASE_URL, max_retries=3, transport=httpx.MockTransport(handler)
     ) as instance:
         with pytest.raises(Exception, match="nope"):

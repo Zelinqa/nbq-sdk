@@ -1,4 +1,4 @@
-"""Configuration clients for the NBQ Studio-facing routes.
+"""Configuration clients for the Zelinqa Studio-facing routes.
 
 Reading the published corpus needs ``configuration:read``; reading the draft
 and writing changes need ``configuration:write``; publishing and reading the
@@ -35,7 +35,7 @@ from ._http import (
     validate_max_retries,
     validate_timeout,
 )
-from .errors import NBQCompilationTimeoutError
+from .errors import ZelinqaCompilationTimeoutError
 from .models import (
     CompilationStatus,
     ConfigurationAuditPage,
@@ -52,9 +52,9 @@ from .models import (
 )
 
 __all__ = [
-    "AsyncNBQConfigurationClient",
-    "NBQCompilationTimeoutError",
-    "NBQConfigurationClient",
+    "AsyncZelinqaConfigurationClient",
+    "ZelinqaCompilationTimeoutError",
+    "ZelinqaConfigurationClient",
 ]
 
 _CONFIGURATION = "/v1/configuration"
@@ -76,7 +76,7 @@ ChangeInput = ConfigurationChange | Mapping[str, Any]
 def _questions_params(
     *,
     state: ConfigurationState | None,
-    sub_objective_id: str | None,
+    dimension_id: str | None,
     active: bool | None,
     type: QuestionType | None,
     search: str | None,
@@ -87,7 +87,7 @@ def _questions_params(
     return query_params(
         {
             "state": state,
-            "sub_objective_id": sub_objective_id,
+            "dimension_id": dimension_id,
             "active": active,
             "type": type,
             "search": search,
@@ -117,15 +117,20 @@ def _publish_body(*, expected_draft_revision: int | None) -> dict[str, Any]:
 def _dump(model: ConfigurationChangesRequest | PublishRequest) -> dict[str, Any]:
     """Serialise a request body: JSON types, aliases, and no unset field."""
 
-    return model.model_dump(mode="json", by_alias=True, exclude_none=True)
+    payload = model.model_dump(mode="json", by_alias=True, exclude_none=True)
+    if isinstance(model, ConfigurationChangesRequest):
+        for change, wire in zip(model.changes, payload["changes"], strict=True):
+            if change.entity == "question" and "selection_mode" in change.question.model_fields_set:
+                wire["question"]["selection_mode"] = change.question.selection_mode
+    return payload
 
 
 def _compilation_path(compilation_id: str) -> str:
     return f"{_COMPILATIONS}/{path_segment(compilation_id)}"
 
 
-def _timeout_error(compilation_id: str, timeout: float) -> NBQCompilationTimeoutError:
-    return NBQCompilationTimeoutError(
+def _timeout_error(compilation_id: str, timeout: float) -> ZelinqaCompilationTimeoutError:
+    return ZelinqaCompilationTimeoutError(
         f"compilation {compilation_id} did not reach a terminal status within {timeout:g}s",
         compilation_id=compilation_id,
         timeout=timeout,
@@ -139,11 +144,11 @@ def _validate_polling(poll_interval: float, timeout: float) -> None:
         raise ValueError("timeout must be greater than zero")
 
 
-class NBQConfigurationClient:
-    """Blocking client for the NBQ configuration routes.
+class ZelinqaConfigurationClient:
+    """Blocking client for the Zelinqa configuration routes.
 
-    ``api_key`` falls back to ``NBQ_CONFIGURATION_API_KEY`` then
-    ``NBQ_API_KEY``; ``base_url`` to ``NBQ_BASE_URL`` then
+    ``api_key`` falls back to ``ZELINQA_CONFIGURATION_API_KEY`` then
+    ``ZELINQA_API_KEY``; ``base_url`` to ``ZELINQA_BASE_URL`` then
     ``https://api.zelinqa.ai``.
     """
 
@@ -166,9 +171,9 @@ class NBQConfigurationClient:
         )
 
     def __repr__(self) -> str:
-        return f"NBQConfigurationClient(base_url={self._base_url!r})"
+        return f"ZelinqaConfigurationClient(base_url={self._base_url!r})"
 
-    def __enter__(self) -> NBQConfigurationClient:
+    def __enter__(self) -> ZelinqaConfigurationClient:
         return self
 
     def __exit__(
@@ -189,7 +194,7 @@ class NBQConfigurationClient:
     def get_configuration(
         self, *, state: ConfigurationState = "published"
     ) -> ConfigurationResponse:
-        """Read the objective, sub-objectives, success informations and questions."""
+        """Read the objective, dimensions, success informations and questions."""
 
         attempt = self._executor.send(
             Request(method="GET", path=_CONFIGURATION, params=query_params({"state": state}))
@@ -200,7 +205,7 @@ class NBQConfigurationClient:
         self,
         *,
         state: ConfigurationState | None = None,
-        sub_objective_id: str | None = None,
+        dimension_id: str | None = None,
         active: bool | None = None,
         type: QuestionType | None = None,
         search: str | None = None,
@@ -215,7 +220,7 @@ class NBQConfigurationClient:
                 path=_QUESTIONS,
                 params=_questions_params(
                     state=state,
-                    sub_objective_id=sub_objective_id,
+                    dimension_id=dimension_id,
                     active=active,
                     type=type,
                     search=search,
@@ -230,7 +235,7 @@ class NBQConfigurationClient:
         self,
         *,
         state: ConfigurationState | None = None,
-        sub_objective_id: str | None = None,
+        dimension_id: str | None = None,
         active: bool | None = None,
         type: QuestionType | None = None,
         search: str | None = None,
@@ -243,7 +248,7 @@ class NBQConfigurationClient:
         while True:
             page = self.list_questions(
                 state=state,
-                sub_objective_id=sub_objective_id,
+                dimension_id=dimension_id,
                 active=active,
                 type=type,
                 search=search,
@@ -259,7 +264,7 @@ class NBQConfigurationClient:
         self,
         *,
         state: ConfigurationState | None = None,
-        sub_objective_id: str | None = None,
+        dimension_id: str | None = None,
         active: bool | None = None,
         type: QuestionType | None = None,
         search: str | None = None,
@@ -272,7 +277,7 @@ class NBQConfigurationClient:
                 path=_QUESTIONS,
                 params=_questions_params(
                     state=state,
-                    sub_objective_id=sub_objective_id,
+                    dimension_id=dimension_id,
                     active=active,
                     type=type,
                     search=search,
@@ -365,7 +370,7 @@ class NBQConfigurationClient:
 
         A failure is a normal outcome here, not an exception: inspect
         ``status.error``. Only running out of time raises
-        :class:`~nbq.errors.NBQCompilationTimeoutError`.
+        :class:`~zelinqa.errors.ZelinqaCompilationTimeoutError`.
         """
 
         _validate_polling(poll_interval, timeout)
@@ -379,8 +384,8 @@ class NBQConfigurationClient:
             time.sleep(poll_interval)
 
 
-class AsyncNBQConfigurationClient:
-    """Async configuration client. Same surface as :class:`NBQConfigurationClient`."""
+class AsyncZelinqaConfigurationClient:
+    """Async configuration client. Same surface as :class:`ZelinqaConfigurationClient`."""
 
     def __init__(
         self,
@@ -401,9 +406,9 @@ class AsyncNBQConfigurationClient:
         )
 
     def __repr__(self) -> str:
-        return f"AsyncNBQConfigurationClient(base_url={self._base_url!r})"
+        return f"AsyncZelinqaConfigurationClient(base_url={self._base_url!r})"
 
-    async def __aenter__(self) -> AsyncNBQConfigurationClient:
+    async def __aenter__(self) -> AsyncZelinqaConfigurationClient:
         return self
 
     async def __aexit__(
@@ -427,7 +432,7 @@ class AsyncNBQConfigurationClient:
     async def get_configuration(
         self, *, state: ConfigurationState = "published"
     ) -> ConfigurationResponse:
-        """Read the objective, sub-objectives, success informations and questions."""
+        """Read the objective, dimensions, success informations and questions."""
 
         attempt = await self._executor.send(
             Request(method="GET", path=_CONFIGURATION, params=query_params({"state": state}))
@@ -438,7 +443,7 @@ class AsyncNBQConfigurationClient:
         self,
         *,
         state: ConfigurationState | None = None,
-        sub_objective_id: str | None = None,
+        dimension_id: str | None = None,
         active: bool | None = None,
         type: QuestionType | None = None,
         search: str | None = None,
@@ -453,7 +458,7 @@ class AsyncNBQConfigurationClient:
                 path=_QUESTIONS,
                 params=_questions_params(
                     state=state,
-                    sub_objective_id=sub_objective_id,
+                    dimension_id=dimension_id,
                     active=active,
                     type=type,
                     search=search,
@@ -468,7 +473,7 @@ class AsyncNBQConfigurationClient:
         self,
         *,
         state: ConfigurationState | None = None,
-        sub_objective_id: str | None = None,
+        dimension_id: str | None = None,
         active: bool | None = None,
         type: QuestionType | None = None,
         search: str | None = None,
@@ -481,7 +486,7 @@ class AsyncNBQConfigurationClient:
         while True:
             page = await self.list_questions(
                 state=state,
-                sub_objective_id=sub_objective_id,
+                dimension_id=dimension_id,
                 active=active,
                 type=type,
                 search=search,
@@ -498,7 +503,7 @@ class AsyncNBQConfigurationClient:
         self,
         *,
         state: ConfigurationState | None = None,
-        sub_objective_id: str | None = None,
+        dimension_id: str | None = None,
         active: bool | None = None,
         type: QuestionType | None = None,
         search: str | None = None,
@@ -511,7 +516,7 @@ class AsyncNBQConfigurationClient:
                 path=_QUESTIONS,
                 params=_questions_params(
                     state=state,
-                    sub_objective_id=sub_objective_id,
+                    dimension_id=dimension_id,
                     active=active,
                     type=type,
                     search=search,
@@ -606,7 +611,7 @@ class AsyncNBQConfigurationClient:
 
         A failure is a normal outcome here, not an exception: inspect
         ``status.error``. Only running out of time raises
-        :class:`~nbq.errors.NBQCompilationTimeoutError`.
+        :class:`~zelinqa.errors.ZelinqaCompilationTimeoutError`.
         """
 
         _validate_polling(poll_interval, timeout)

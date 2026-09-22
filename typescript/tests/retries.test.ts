@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { NBQClient, NBQConnectionError, NBQServerError } from "../src/index.js";
+import { ZelinqaClient, ZelinqaConnectionError, ZelinqaServerError } from "../src/index.js";
 import { at, jsonResponse, recordFetch, TEST_API_KEY, TEST_BASE_URL } from "./helpers.js";
 
 /** Distinctive per-attempt timeout, so backoff sleeps are easy to isolate. */
@@ -14,8 +14,8 @@ function backoffDelays(): number[] {
     .filter((delay): delay is number => typeof delay === "number" && delay !== ATTEMPT_TIMEOUT_MS);
 }
 
-function client(fetch: ReturnType<typeof recordFetch>["fetch"], maxRetries: number): NBQClient {
-  return new NBQClient({
+function client(fetch: ReturnType<typeof recordFetch>["fetch"], maxRetries: number): ZelinqaClient {
+  return new ZelinqaClient({
     apiKey: TEST_API_KEY,
     baseUrl: TEST_BASE_URL,
     timeoutMs: ATTEMPT_TIMEOUT_MS,
@@ -47,7 +47,7 @@ describe("retry policy", () => {
     await vi.advanceTimersByTimeAsync(10_000);
     const error = await promise;
 
-    expect(error).toBeInstanceOf(NBQServerError);
+    expect(error).toBeInstanceOf(ZelinqaServerError);
     expect(recorder.requests).toHaveLength(4);
     expect(backoffDelays()).toEqual([500, 1_000, 2_000]);
   });
@@ -173,7 +173,7 @@ describe("retry policy", () => {
     expect(backoffDelays()).toEqual([500]);
   });
 
-  it("retries a per-attempt timeout and ends on NBQConnectionError", async () => {
+  it("retries a per-attempt timeout and ends on ZelinqaConnectionError", async () => {
     vi.spyOn(Math, "random").mockReturnValue(0);
     const calls: AbortSignal[] = [];
     const fetch = vi.fn(
@@ -188,7 +188,7 @@ describe("retry policy", () => {
           }
         }),
     );
-    const runtime = new NBQClient({
+    const runtime = new ZelinqaClient({
       apiKey: TEST_API_KEY,
       baseUrl: TEST_BASE_URL,
       timeoutMs: 1_000,
@@ -200,7 +200,7 @@ describe("retry policy", () => {
     await vi.advanceTimersByTimeAsync(5_000);
     const error = await promise;
 
-    expect(error).toBeInstanceOf(NBQConnectionError);
+    expect(error).toBeInstanceOf(ZelinqaConnectionError);
     expect(calls).toHaveLength(2);
   });
 
@@ -215,7 +215,7 @@ describe("retry policy", () => {
           });
         }),
     );
-    const runtime = new NBQClient({
+    const runtime = new ZelinqaClient({
       apiKey: TEST_API_KEY,
       baseUrl: TEST_BASE_URL,
       maxRetries: 3,

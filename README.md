@@ -1,11 +1,11 @@
-# NBQ SDKs
+# Zelinqa SDKs
 
-Official Python and TypeScript clients for the [NBQ Engine](https://docs.zelinqa.ai)
+Official Python and TypeScript clients for the [Zelinqa Engine](https://docs.zelinqa.ai)
 V1 public API (`https://api.zelinqa.ai`).
 
-NBQ Engine keeps the canonical state of a conversation server-side and answers
+Zelinqa Engine keeps the canonical state of a conversation server-side and answers
 one question: given what this conversation already told you, what should be
-asked next? You configure objectives and a question bank in NBQ Studio, publish
+asked next? You configure objectives and a question bank in Zelinqa Studio, publish
 an immutable version, and the API selects the next question from the session
 state.
 
@@ -21,26 +21,26 @@ and Farouk's explicit go. See [`PUBLISHING.md`](PUBLISHING.md).
 
 | | Python | TypeScript |
 |---|---|---|
-| Package | `nbq` | `@zelinqa/nbq` |
+| Package | `zelinqa` | `@zelinqa/sdk` |
 | Version | 1.0.0 (prepared) | 1.0.0 (prepared) |
 | Runtime | Python 3.11+ | Node ≥ 22 |
 | Dependencies | `httpx`, `pydantic` v2 | none |
 | Guide | [`python/README.md`](python/README.md) | [`typescript/README.md`](typescript/README.md) |
 
 ```bash
-uv add nbq              # or: pip install nbq
-pnpm add @zelinqa/nbq   # or: npm install / yarn add
+uv add zelinqa              # or: pip install zelinqa
+pnpm add @zelinqa/sdk   # or: npm install / yarn add
 ```
 
 ## Two clients, two keys
 
-An NBQ key carries scopes, and Studio recommends one key per job. Both SDKs are
+A Zelinqa key carries scopes, and Studio recommends one key per job. Both SDKs are
 split the same way.
 
 | Client | Scope | What it does |
 |---|---|---|
-| `NBQClient` (+ `AsyncNBQClient` in Python) | `runtime` | sessions, next question, out-of-turn events, state, feedback |
-| `NBQConfigurationClient` (+ async) | `configuration:read` · `configuration:write` · `configuration:publish` | read the corpus, edit the draft, publish, follow the compilation, read the audit log |
+| `ZelinqaClient` (+ `AsyncZelinqaClient` in Python) | `runtime` | sessions, next question, out-of-turn events, state, feedback |
+| `ZelinqaConfigurationClient` (+ async) | `configuration:read` · `configuration:write` · `configuration:publish` | read the corpus, edit the draft, publish, follow the compilation, read the audit log |
 
 Scope rules worth knowing:
 
@@ -55,10 +55,46 @@ Scope rules worth knowing:
 - `configuration:publish` is also what gates the audit log — it contains
   operator identities.
 - The tenant is never sent by the client. The authorizer resolves the key and
-  injects the tenant, the NBQ and the scopes; any `x-tenant-id`, `x-nbq-id` or
+  injects the tenant, the domain and the scopes; any `x-tenant-id`, `x-nbq-id` or
   `x-scopes` header you send is overwritten.
 
 ## Runtime flow
+
+### Without technical identifiers
+
+```python
+from zelinqa import ZelinqaClient
+
+with ZelinqaClient() as client:  # ZELINQA_API_KEY, runtime scope
+    conversation = client.start_session(client_reference="demo-001")
+    proposal = conversation.next()
+    # Ask proposal.candidates[0].text, then pass the real reply:
+    proposal = conversation.answer("We need to qualify inbound requests")
+    conversation.submit_feedback(result="partial", label="demo_finished")
+```
+
+```ts
+import { ZelinqaClient } from "@zelinqa/sdk";
+const client = new ZelinqaClient({ apiKey: process.env.ZELINQA_API_KEY ?? "" });
+const conversation = await client.startSession({ client_reference: "demo-001" });
+let proposal = await conversation.next();
+// Ask the question, then pass the real reply:
+proposal = await conversation.answer({ userText: "We need to qualify inbound requests" });
+await conversation.submitFeedback({ result: "partial", label: "demo_finished" });
+```
+
+The handle supplies session, version, decision and question IDs. Use
+`candidate_rank` / `candidateRank` for the candidate actually asked (default 1).
+`choice_labels` / `choiceLabels` maps exact displayed labels to choice IDs;
+unknown, duplicate or ambiguous labels are rejected locally. Semi-open questions
+respect `selection_mode`. `free_text` / `freeText` supplements a selected choice;
+for an unlisted answer use `user_text` / `userText` instead.
+
+Call mutations sequentially per handle. Persist `conversation.id` in your backend,
+not the LLM prompt, to call `resume_session` / `resumeSession` after restart.
+The helpers add no HTTP call to `/next` and keep no transcript cache. Free text
+is not automatically marked complete, and conflicts are never silently replayed.
+
 
 The session handle (`start_session` / `startSession`) tracks `state_version` for
 you. Conflicts are never hidden.
@@ -66,10 +102,10 @@ you. Conflicts are never hidden.
 ### Python
 
 ```python
-from nbq import NBQClient
+from zelinqa import ZelinqaClient
 
-with NBQClient() as client:                     # api_key from NBQ_API_KEY
-    session = client.start_session(client_reference="crm-lead-8842", max_turns=10)
+with ZelinqaClient() as client:                     # api_key from ZELINQA_API_KEY
+    session = client.start_session(client_reference="crm-lead-8842", max_turns=15)
 
     decision = session.next()                   # first turn, nothing asked yet
     candidate = decision.candidates[0]
@@ -93,12 +129,12 @@ with NBQClient() as client:                     # api_key from NBQ_API_KEY
 ### TypeScript
 
 ```ts
-import { NBQClient } from "@zelinqa/nbq";
+import { ZelinqaClient } from "@zelinqa/sdk";
 
-const client = new NBQClient({ apiKey: process.env.NBQ_RUNTIME_KEY ?? "" });
+const client = new ZelinqaClient({ apiKey: process.env.ZELINQA_RUNTIME_KEY ?? "" });
 const session = await client.startSession({
   client_reference: "crm-lead-8842",
-  max_turns: 10,
+  max_turns: 15,
 });
 
 let decision = await session.next();
@@ -134,7 +170,7 @@ re-reading the session is enough, there is no resume token to keep. Call the
 client methods directly (`create_session`, `next`, `apply_events`,
 `get_session`, `submit_feedback`) when you persist `state_version` yourself.
 
-NBQ never decides for you: `action == "ask"` means candidates are available,
+Zelinqa never decides for you: `action == "ask"` means candidates are available,
 ranked, rank 1 first; `action == "stop"` only happens when no identifiable
 question is left. A reached turn limit or an achieved objective is reported in
 `warnings` while the best question is still proposed. `degraded` /
@@ -148,8 +184,9 @@ Compilation runs outside the HTTP request, so `publish` returns `202` with a
 compilation id.
 
 ```python
-with NBQConfigurationClient() as studio:
+with ZelinqaConfigurationClient() as studio:
     draft = studio.get_configuration(state="draft")        # needs read + write
+    print(draft.domain.name)                               # current Studio name
     applied = studio.apply_changes(changes, expected_draft_revision=draft.draft_revision)
     queued = studio.publish(expected_draft_revision=applied.draft_revision)
     status = studio.wait_for_compilation(queued.compilation_id, poll_interval=3, timeout=900)
@@ -157,6 +194,7 @@ with NBQConfigurationClient() as studio:
 
 ```ts
 const draft = await studio.getConfiguration({ state: "draft" });
+console.log(draft.domain.name); // current Studio name, not objective.name
 const applied = await studio.applyChanges({
   changes,
   expected_draft_revision: draft.draft_revision ?? undefined,
@@ -171,38 +209,38 @@ const status = await studio.waitForCompilation(queued.compilation_id, {
 `wait_for_compilation` / `waitForCompilation` returns the terminal status —
 a failed compilation is an editorial outcome, so inspect `status.error` instead
 of catching an exception. Only running out of time raises
-`NBQCompilationTimeoutError`. Other configuration methods: `list_questions` /
+`ZelinqaCompilationTimeoutError`. Other configuration methods: `list_questions` /
 `listQuestions`, `iter_questions` / `iterateQuestions` (cursor pagination),
 `export_questions_csv` / `exportQuestionsCsv`, `list_audit` / `listAudit`,
 `get_compilation` / `getCompilation`.
 
 ## Errors
 
-Same class names in both languages; every exception derives from `NBQError`.
+Same class names in both languages; every exception derives from `ZelinqaError`.
 The envelope `code` decides the type first, then the HTTP status when the body
 is not a V1 envelope.
 
 | Class | When | Notable attributes |
 |---|---|---|
-| `NBQConnectionError` | network failure or per-attempt timeout, after retries | |
-| `NBQCompilationTimeoutError` | the compilation wait ran out of time | compilation id, timeout |
-| `NBQAPIError` | base of every HTTP failure | status code, `code`, message, request id, details, retry after |
-| `NBQAuthenticationError` | `401` (no `Authorization` header) **or** `403` without an envelope | status code |
-| `NBQInsufficientScopeError` | `403` `insufficient_scope` — the service's dynamic check | required / granted scopes |
-| `NBQNotFoundError` | `404`, specialised as `NBQUnknownSessionError`, `NBQUnknownConfigurationError`, `NBQUnknownCompilationError` | |
-| `NBQConflictError` | `409`, specialised as `NBQStateVersionConflictError`, `NBQIdempotencyKeyReusedError`, `NBQCompilationInProgressError` | supplied / current state version · idempotency key · compilation id and status |
-| `NBQCompiledArtifactUnavailableError` | `410` `compiled_artifact_unavailable` | |
-| `NBQValidationError` | `422`, specialised as `NBQInvalidPreviousTurnError`, `NBQConstraintNoMatchError`, `NBQInvalidChoiceError`, `NBQConfigurationValidationError` | grouped `issues` |
-| `NBQRateLimitError` | `429`, retried automatically first | retry after |
-| `NBQIdempotencyContentionError` | `503` `idempotency_contention`, retried first | retry after |
-| `NBQServerError` | any other `5xx` | |
+| `ZelinqaConnectionError` | network failure or per-attempt timeout, after retries | |
+| `ZelinqaCompilationTimeoutError` | the compilation wait ran out of time | compilation id, timeout |
+| `ZelinqaAPIError` | base of every HTTP failure | status code, `code`, message, request id, details, retry after |
+| `ZelinqaAuthenticationError` | `401` (no `Authorization` header) **or** `403` without an envelope | status code |
+| `ZelinqaInsufficientScopeError` | `403` `insufficient_scope` — the service's dynamic check | required / granted scopes |
+| `ZelinqaNotFoundError` | `404`, specialised as `ZelinqaUnknownSessionError`, `ZelinqaUnknownConfigurationError`, `ZelinqaUnknownCompilationError` | |
+| `ZelinqaConflictError` | `409`, specialised as `ZelinqaStateVersionConflictError`, `ZelinqaIdempotencyKeyReusedError`, `ZelinqaCompilationInProgressError` | supplied / current state version · idempotency key · compilation id and status |
+| `ZelinqaCompiledArtifactUnavailableError` | `410` `compiled_artifact_unavailable` | |
+| `ZelinqaValidationError` | `422`, specialised as `ZelinqaInvalidPreviousTurnError`, `ZelinqaConstraintNoMatchError`, `ZelinqaInvalidChoiceError`, `ZelinqaConfigurationValidationError` | grouped `issues` |
+| `ZelinqaRateLimitError` | `429`, retried automatically first | retry after |
+| `ZelinqaIdempotencyContentionError` | `503` `idempotency_contention`, retried first | retry after |
+| `ZelinqaServerError` | any other `5xx` | |
 
 Gateway semantics matter here: a missing `Authorization` header is `401`
 `{"message":"Unauthorized"}`, while an invalid, revoked or expired key **and** a
 key missing the scope the authorizer requires for that route both return the
 same opaque `403 {"message":"Forbidden"}`. The SDKs do not pretend to tell those
-two apart — both become `NBQAuthenticationError`; read the status code to
-separate a missing header from a refused key. `NBQInsufficientScopeError` is
+two apart — both become `ZelinqaAuthenticationError`; read the status code to
+separate a missing header from a refused key. `ZelinqaInsufficientScopeError` is
 reserved for the `403` that carries a real V1 envelope.
 
 `str(error)` / `String(error)` reads `"<code or status>: <message>
@@ -215,7 +253,7 @@ never contains a key or conversation content.
   UUID v4 **once per logical call and reuses it across that call's retries**, so
   a retry can never double a turn, an outcome, a feedback or a publication.
   Same key + same body replays the original response; same key + different body
-  raises `NBQIdempotencyKeyReusedError`. Server-side records expire after 24 h.
+  raises `ZelinqaIdempotencyKeyReusedError`. Server-side records expire after 24 h.
 - Retried, up to `max_retries` / `maxRetries` (default 2), with exponential
   backoff 0.5 s, 1 s, 2 s … capped at 10 s and jittered: connection errors,
   timeouts, `429`, `500`, `502`, `503`, `504`, and the `idempotency_contention`
@@ -233,16 +271,16 @@ The Python SDK reads the environment; **the TypeScript SDK never does** —
 
 | Variable | Used by | Default |
 |---|---|---|
-| `NBQ_API_KEY` | both Python clients | — |
-| `NBQ_CONFIGURATION_API_KEY` | Python configuration client, before `NBQ_API_KEY` | — |
-| `NBQ_BASE_URL` | both Python clients | `https://api.zelinqa.ai` |
+| `ZELINQA_API_KEY` | both Python clients | — |
+| `ZELINQA_CONFIGURATION_API_KEY` | Python configuration client, before `ZELINQA_API_KEY` | — |
+| `ZELINQA_BASE_URL` | both Python clients | `https://api.zelinqa.ai` |
 
 ## Security
 
-**These are server-side clients.** An NBQ key is a bearer credential granting
-access to your whole question bank and to every session of your tenant. Never
+**These are server-side clients.** A Zelinqa key is a bearer credential restricted
+to its configured domain and scopes. Never
 embed one in a browser, a mobile app or any client you do not control — proxy
-NBQ through your own service instead.
+Zelinqa through your own service instead.
 
 - The key lives in the HTTP client and nowhere else. No exception, message,
   `repr`, `toString`, log line or returned value contains it.
@@ -284,21 +322,21 @@ uv run pytest           # live tests excluded by default
 ```
 
 `pnpm check:versions` asserts that `pyproject.toml`,
-`python/src/nbq/_version.py`, `package.json` and `typescript/src/version.ts`
+`python/src/zelinqa/_version.py`, `package.json` and `typescript/src/version.ts`
 agree. Run it before every release.
 
 ### Live tests
 
 Both live suites are opt-in, hit real staging and are skipped by default. They
-need `NBQ_LIVE=1` plus `NBQ_LIVE_RUNTIME_KEY`, `NBQ_LIVE_CONFIG_READ_KEY`,
-`NBQ_LIVE_CONFIG_WRITE_KEY`, `NBQ_LIVE_CONFIG_PUBLISH_KEY`,
-`NBQ_LIVE_CONFIG_MANAGE_KEY` (read + write + publish, for draft reads) and
-`NBQ_LIVE_REVOKED_KEY`; `NBQ_LIVE_BASE_URL` defaults to
+need `ZELINQA_LIVE=1` plus `ZELINQA_LIVE_RUNTIME_KEY`, `ZELINQA_LIVE_CONFIG_READ_KEY`,
+`ZELINQA_LIVE_CONFIG_WRITE_KEY`, `ZELINQA_LIVE_CONFIG_PUBLISH_KEY`,
+`ZELINQA_LIVE_CONFIG_MANAGE_KEY` (read + write + publish, for draft reads) and
+`ZELINQA_LIVE_REVOKED_KEY`; `ZELINQA_LIVE_BASE_URL` defaults to
 `https://api.zelinqa.ai`.
 
 ```bash
-NBQ_LIVE=1 uv run pytest -m live python/tests/live
-NBQ_LIVE=1 pnpm test:live
+ZELINQA_LIVE=1 uv run pytest -m live python/tests/live
+ZELINQA_LIVE=1 pnpm test:live
 ```
 
 They upsert a throwaway corpus so re-runs work, log only request ids and error

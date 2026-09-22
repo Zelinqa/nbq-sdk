@@ -1,5 +1,5 @@
 /**
- * Configuration client of the NBQ Engine V1 API.
+ * Configuration client of the Zelinqa V1 API.
  *
  * Requires a management key. Scopes are least privilege and checked per route:
  * `configuration:read` to read the published corpus, `configuration:write` to
@@ -8,7 +8,7 @@
  * read-only key gets `403 insufficient_scope` on it rather than a gateway refusal.
  */
 
-import { NBQCompilationTimeoutError } from "./errors.js";
+import { ZelinqaCompilationTimeoutError } from "./errors.js";
 import { encodePathSegment, HttpTransport } from "./http.js";
 import type {
   CompilationStatus,
@@ -20,11 +20,11 @@ import type {
   GetConfigurationQuery,
   ListAuditQuery,
   ListQuestionsQuery,
-  NBQClientOptions,
   PublishRequest,
   QuestionListResponse,
   RequestOptions,
   WaitForCompilationOptions,
+  ZelinqaClientOptions,
 } from "./types.js";
 
 export const DEFAULT_POLL_INTERVAL_MS = 2_000;
@@ -38,7 +38,7 @@ function questionsQuery(
 ): Readonly<Record<string, string | number | boolean | undefined>> {
   return {
     state: query?.state,
-    sub_objective_id: query?.sub_objective_id,
+    dimension_id: query?.dimension_id,
     active: query?.active,
     type: query?.type,
     search: query?.search,
@@ -66,10 +66,10 @@ function sleep(milliseconds: number, signal: AbortSignal | undefined): Promise<v
   });
 }
 
-export class NBQConfigurationClient {
+export class ZelinqaConfigurationClient {
   readonly #http: HttpTransport;
 
-  public constructor(options: NBQClientOptions) {
+  public constructor(options: ZelinqaClientOptions) {
     this.#http = new HttpTransport(options);
   }
 
@@ -79,11 +79,11 @@ export class NBQConfigurationClient {
 
   /** Never exposes the API key. */
   public toString(): string {
-    return `NBQConfigurationClient(baseUrl=${this.#http.baseUrl})`;
+    return `ZelinqaConfigurationClient(baseUrl=${this.#http.baseUrl})`;
   }
 
   /**
-   * `GET /v1/configuration` — objective, sub-objectives, success informations and
+   * `GET /v1/configuration` — objective, dimensions, success informations and
    * questions. `state: "draft"` requires `configuration:write`.
    */
   public async getConfiguration(
@@ -139,7 +139,7 @@ export class NBQConfigurationClient {
 
   /**
    * `GET /v1/configuration/questions?format=csv` — the whole filtered corpus as
-   * `text/csv`, header `id,text,type,choices,sub_objective_id,active`.
+   * `text/csv`; includes question source and selection mode.
    */
   public async exportQuestionsCsv(
     query?: ListQuestionsQuery,
@@ -222,7 +222,7 @@ export class NBQConfigurationClient {
    * Polls a compilation until it reaches a terminal state and returns that state.
    *
    * Returns on `failed` as well as on `succeeded` — inspect `status.error` — and
-   * raises `NBQCompilationTimeoutError` only when the budget runs out. A failed
+   * raises `ZelinqaCompilationTimeoutError` only when the budget runs out. A failed
    * compilation is an editorial outcome, not an SDK failure.
    */
   public async waitForCompilation(
@@ -249,7 +249,7 @@ export class NBQConfigurationClient {
         return status;
       }
       if (Date.now() + pollIntervalMs > deadline) {
-        throw new NBQCompilationTimeoutError(
+        throw new ZelinqaCompilationTimeoutError(
           `Compilation ${compilationId} did not finish within ${timeoutMs} ms`,
           compilationId,
           timeoutMs,

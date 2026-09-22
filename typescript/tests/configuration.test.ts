@@ -3,14 +3,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   type CompilationStatus,
   type ConfigurationChangesRequest,
-  NBQAuthenticationError,
-  NBQCompilationInProgressError,
-  NBQCompilationTimeoutError,
-  NBQConfigurationClient,
-  NBQConfigurationValidationError,
-  NBQInsufficientScopeError,
-  NBQUnknownCompilationError,
   VERSION,
+  ZelinqaAuthenticationError,
+  ZelinqaCompilationInProgressError,
+  ZelinqaCompilationTimeoutError,
+  ZelinqaConfigurationClient,
+  ZelinqaConfigurationValidationError,
+  ZelinqaInsufficientScopeError,
+  ZelinqaUnknownCompilationError,
 } from "../src/index.js";
 import {
   at,
@@ -54,8 +54,8 @@ const COMPILATION_FAILED = responseExample(
 function client(
   fetch: ReturnType<typeof recordFetch>["fetch"],
   maxRetries = 0,
-): NBQConfigurationClient {
-  return new NBQConfigurationClient({
+): ZelinqaConfigurationClient {
+  return new ZelinqaConfigurationClient({
     apiKey: TEST_API_KEY,
     baseUrl: TEST_BASE_URL,
     maxRetries,
@@ -67,7 +67,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("NBQConfigurationClient.getConfiguration", () => {
+describe("ZelinqaConfigurationClient.getConfiguration", () => {
   it("reads the published configuration by default", async () => {
     const recorder = recordFetch([() => jsonResponse(CONFIGURATION)]);
 
@@ -80,10 +80,12 @@ describe("NBQConfigurationClient.getConfiguration", () => {
     expect(request.headers).toMatchObject({
       Authorization: `Bearer ${TEST_API_KEY}`,
       Accept: "application/json",
-      "User-Agent": `nbq-typescript/${VERSION}`,
+      "User-Agent": `zelinqa-typescript/${VERSION}`,
     });
     expect(configuration).toEqual(CONFIGURATION);
     expect(configuration.state).toBe("published");
+    expect(configuration.domain.name).toBe("Qualification mobilier");
+    expect(configuration.domain.name).not.toBe(configuration.objective.name);
     expect(configuration.questions).toHaveLength(3);
   });
 
@@ -97,10 +99,10 @@ describe("NBQConfigurationClient.getConfiguration", () => {
       .getConfiguration()
       .catch((cause: unknown) => cause);
 
-    expect(error).toBeInstanceOf(NBQAuthenticationError);
-    expect(error).not.toBeInstanceOf(NBQInsufficientScopeError);
-    expect((error as NBQAuthenticationError).statusCode).toBe(403);
-    expect((error as NBQAuthenticationError).code).toBeUndefined();
+    expect(error).toBeInstanceOf(ZelinqaAuthenticationError);
+    expect(error).not.toBeInstanceOf(ZelinqaInsufficientScopeError);
+    expect((error as ZelinqaAuthenticationError).statusCode).toBe(403);
+    expect((error as ZelinqaAuthenticationError).code).toBeUndefined();
   });
 
   it("asks for the draft explicitly and surfaces the dynamic scope refusal", async () => {
@@ -118,22 +120,24 @@ describe("NBQConfigurationClient.getConfiguration", () => {
     const error = await configuration
       .getConfiguration({ state: "draft" })
       .catch((cause: unknown) => cause);
-    expect(error).toBeInstanceOf(NBQInsufficientScopeError);
-    expect((error as NBQInsufficientScopeError).requiredScopes).toEqual(["configuration:publish"]);
-    expect((error as NBQInsufficientScopeError).grantedScopes).toEqual([
+    expect(error).toBeInstanceOf(ZelinqaInsufficientScopeError);
+    expect((error as ZelinqaInsufficientScopeError).requiredScopes).toEqual([
+      "configuration:publish",
+    ]);
+    expect((error as ZelinqaInsufficientScopeError).grantedScopes).toEqual([
       "configuration:read",
       "configuration:write",
     ]);
   });
 });
 
-describe("NBQConfigurationClient.listQuestions", () => {
+describe("ZelinqaConfigurationClient.listQuestions", () => {
   it("serialises every filter into the query string", async () => {
     const recorder = recordFetch([() => jsonResponse(QUESTION_PAGE)]);
 
     const page = await client(recorder.fetch).listQuestions({
       state: "published",
-      sub_objective_id: "so_besoin",
+      dimension_id: "so_besoin",
       active: true,
       type: "single_choice",
       search: "canapé",
@@ -145,7 +149,7 @@ describe("NBQConfigurationClient.listQuestions", () => {
     expect(request.path).toBe("/v1/configuration/questions");
     expect(Object.fromEntries(new URL(request.url).searchParams)).toEqual({
       state: "published",
-      sub_objective_id: "so_besoin",
+      dimension_id: "so_besoin",
       active: "true",
       type: "single_choice",
       search: "canapé",
@@ -164,7 +168,7 @@ describe("NBQConfigurationClient.listQuestions", () => {
   });
 });
 
-describe("NBQConfigurationClient.iterateQuestions", () => {
+describe("ZelinqaConfigurationClient.iterateQuestions", () => {
   it("follows next_cursor until the last page", async () => {
     const firstQuestion = at(QUESTION_PAGE.questions as unknown[], 0);
     const secondQuestion = at(QUESTION_PAGE.questions as unknown[], 1);
@@ -197,13 +201,13 @@ describe("NBQConfigurationClient.iterateQuestions", () => {
   });
 });
 
-describe("NBQConfigurationClient.exportQuestionsCsv", () => {
+describe("ZelinqaConfigurationClient.exportQuestionsCsv", () => {
   it("asks for text/csv and returns the raw export", async () => {
     const csv = csvResponseExample();
     const recorder = recordFetch([() => textResponse(csv)]);
 
     const exported = await client(recorder.fetch).exportQuestionsCsv({
-      sub_objective_id: "so_besoin",
+      dimension_id: "so_besoin",
       limit: 10,
       cursor: "cur_1",
     });
@@ -211,15 +215,15 @@ describe("NBQConfigurationClient.exportQuestionsCsv", () => {
     const request = at(recorder.requests, 0);
     expect(request.headers.Accept).toBe("text/csv");
     expect(Object.fromEntries(new URL(request.url).searchParams)).toEqual({
-      sub_objective_id: "so_besoin",
+      dimension_id: "so_besoin",
       format: "csv",
     });
     expect(exported).toBe(csv);
-    expect(exported.split("\n")[0]).toBe("id,text,type,choices,sub_objective_id,active");
+    expect(exported.split("\n")[0]).toBe("id,text,type,choices,dimension_id,active");
   });
 });
 
-describe("NBQConfigurationClient.listAudit", () => {
+describe("ZelinqaConfigurationClient.listAudit", () => {
   it("returns the audit page and forwards its filters", async () => {
     const recorder = recordFetch([() => jsonResponse(AUDIT_PAGE)]);
 
@@ -244,7 +248,7 @@ describe("NBQConfigurationClient.listAudit", () => {
   });
 });
 
-describe("NBQConfigurationClient.applyChanges", () => {
+describe("ZelinqaConfigurationClient.applyChanges", () => {
   it("posts the ordered change list with an idempotency key", async () => {
     const recorder = recordFetch([() => jsonResponse(CHANGES_RESPONSE)]);
     const body = requestExample(
@@ -295,14 +299,14 @@ describe("NBQConfigurationClient.applyChanges", () => {
       .applyChanges({ changes: [{ entity: "objective", operation: "update", objective: {} }] })
       .catch((cause: unknown) => cause);
 
-    expect(error).toBeInstanceOf(NBQConfigurationValidationError);
-    const validation = error as NBQConfigurationValidationError;
+    expect(error).toBeInstanceOf(ZelinqaConfigurationValidationError);
+    const validation = error as ZelinqaConfigurationValidationError;
     expect(validation.issues).toHaveLength(2);
     expect(at(validation.issues, 0).code).toBe("success_information_without_active_question");
   });
 });
 
-describe("NBQConfigurationClient.publish", () => {
+describe("ZelinqaConfigurationClient.publish", () => {
   it("queues a compilation and returns the 202 status", async () => {
     const recorder = recordFetch([() => jsonResponse(PUBLISH_ACCEPTED, { status: 202 })]);
 
@@ -332,14 +336,14 @@ describe("NBQConfigurationClient.publish", () => {
       .publish()
       .catch((cause: unknown) => cause);
 
-    expect(error).toBeInstanceOf(NBQCompilationInProgressError);
-    const conflict = error as NBQCompilationInProgressError;
+    expect(error).toBeInstanceOf(ZelinqaCompilationInProgressError);
+    const conflict = error as ZelinqaCompilationInProgressError;
     expect(conflict.compilationId).toBe("cmp_01K2QF");
     expect(conflict.compilationStatus).toBe("running");
   });
 });
 
-describe("NBQConfigurationClient.getCompilation", () => {
+describe("ZelinqaConfigurationClient.getCompilation", () => {
   it("reads a job status", async () => {
     const recorder = recordFetch([() => jsonResponse(COMPILATION_RUNNING)]);
 
@@ -356,12 +360,12 @@ describe("NBQConfigurationClient.getCompilation", () => {
     ]);
 
     await expect(client(recorder.fetch).getCompilation("cmp_x")).rejects.toBeInstanceOf(
-      NBQUnknownCompilationError,
+      ZelinqaUnknownCompilationError,
     );
   });
 });
 
-describe("NBQConfigurationClient.waitForCompilation", () => {
+describe("ZelinqaConfigurationClient.waitForCompilation", () => {
   it("polls until the job succeeds", async () => {
     vi.useFakeTimers();
     const recorder = recordFetch([
@@ -393,7 +397,7 @@ describe("NBQConfigurationClient.waitForCompilation", () => {
     expect((status.error as NonNullable<CompilationStatus["error"]>).code).toBe("llm_unavailable");
   });
 
-  it("raises NBQCompilationTimeoutError once the budget is spent", async () => {
+  it("raises ZelinqaCompilationTimeoutError once the budget is spent", async () => {
     vi.useFakeTimers();
     const recorder = recordFetch([() => jsonResponse(PUBLISH_ACCEPTED)]);
 
@@ -403,9 +407,9 @@ describe("NBQConfigurationClient.waitForCompilation", () => {
     await vi.advanceTimersByTimeAsync(3_000);
     const error = await promise;
 
-    expect(error).toBeInstanceOf(NBQCompilationTimeoutError);
-    expect((error as NBQCompilationTimeoutError).compilationId).toBe("cmp_01K2QF");
-    expect((error as NBQCompilationTimeoutError).timeoutMs).toBe(5_000);
+    expect(error).toBeInstanceOf(ZelinqaCompilationTimeoutError);
+    expect((error as ZelinqaCompilationTimeoutError).compilationId).toBe("cmp_01K2QF");
+    expect((error as ZelinqaCompilationTimeoutError).timeoutMs).toBe(5_000);
     expect(recorder.requests).toHaveLength(2);
   });
 
@@ -439,9 +443,9 @@ describe("NBQConfigurationClient.waitForCompilation", () => {
   });
 });
 
-describe("NBQConfigurationClient construction", () => {
+describe("ZelinqaConfigurationClient construction", () => {
   it("never prints the key", () => {
-    const configuration = new NBQConfigurationClient({
+    const configuration = new ZelinqaConfigurationClient({
       apiKey: TEST_API_KEY,
       baseUrl: TEST_BASE_URL,
       fetch: vi.fn(),

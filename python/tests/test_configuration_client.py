@@ -12,24 +12,24 @@ from typing import Any
 
 import httpx
 import pytest
-from nbq import (
-    AsyncNBQConfigurationClient,
-    NBQCompilationTimeoutError,
-    NBQConfigurationClient,
-    ObjectiveChange,
-    ObjectivePatch,
-    QuestionChange,
-    QuestionPatch,
-    SuccessInformationChange,
-    SuccessInformationPatch,
-)
-from nbq._version import __version__
 from spec_examples import (
     CONFIGURATION_PUBLIEE,
     PAGE_DE_QUESTIONS,
     csv_export_example,
     operation_example,
 )
+from zelinqa import (
+    AsyncZelinqaConfigurationClient,
+    ObjectiveChange,
+    ObjectivePatch,
+    QuestionChange,
+    QuestionPatch,
+    SuccessInformationChange,
+    SuccessInformationPatch,
+    ZelinqaCompilationTimeoutError,
+    ZelinqaConfigurationClient,
+)
+from zelinqa._version import __version__
 
 API_KEY = "nbq_live_config_test"
 BASE_URL = "https://api.example.test"
@@ -80,8 +80,8 @@ def csv_response(body: str) -> httpx.Response:
     return httpx.Response(200, text=body, headers={"content-type": "text/csv; charset=utf-8"})
 
 
-def sync_client(recorder: Recorder, **kwargs: Any) -> NBQConfigurationClient:
-    return NBQConfigurationClient(
+def sync_client(recorder: Recorder, **kwargs: Any) -> ZelinqaConfigurationClient:
+    return ZelinqaConfigurationClient(
         API_KEY,
         base_url=BASE_URL,
         max_retries=0,
@@ -90,8 +90,8 @@ def sync_client(recorder: Recorder, **kwargs: Any) -> NBQConfigurationClient:
     )
 
 
-def async_client(recorder: Recorder, **kwargs: Any) -> AsyncNBQConfigurationClient:
-    return AsyncNBQConfigurationClient(
+def async_client(recorder: Recorder, **kwargs: Any) -> AsyncZelinqaConfigurationClient:
+    return AsyncZelinqaConfigurationClient(
         API_KEY,
         base_url=BASE_URL,
         max_retries=0,
@@ -110,10 +110,10 @@ def test_repr_never_leaks_the_key() -> None:
 
 
 def test_api_key_prefers_the_configuration_variable(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("NBQ_API_KEY", "nbq_live_runtime")
-    monkeypatch.setenv("NBQ_CONFIGURATION_API_KEY", "nbq_live_management")
+    monkeypatch.setenv("ZELINQA_API_KEY", "nbq_live_runtime")
+    monkeypatch.setenv("ZELINQA_CONFIGURATION_API_KEY", "nbq_live_management")
     recorder = Recorder(json_response(200, CONFIGURATION_PUBLIEE))
-    with NBQConfigurationClient(
+    with ZelinqaConfigurationClient(
         base_url=BASE_URL, max_retries=0, transport=httpx.MockTransport(recorder)
     ) as client:
         client.get_configuration()
@@ -121,10 +121,10 @@ def test_api_key_prefers_the_configuration_variable(monkeypatch: pytest.MonkeyPa
 
 
 def test_api_key_falls_back_to_the_runtime_variable(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("NBQ_CONFIGURATION_API_KEY", raising=False)
-    monkeypatch.setenv("NBQ_API_KEY", "nbq_live_shared")
+    monkeypatch.delenv("ZELINQA_CONFIGURATION_API_KEY", raising=False)
+    monkeypatch.setenv("ZELINQA_API_KEY", "nbq_live_shared")
     recorder = Recorder(json_response(200, CONFIGURATION_PUBLIEE))
-    with NBQConfigurationClient(
+    with ZelinqaConfigurationClient(
         base_url=BASE_URL, max_retries=0, transport=httpx.MockTransport(recorder)
     ) as client:
         client.get_configuration()
@@ -142,11 +142,13 @@ def test_get_configuration_defaults_to_published() -> None:
     assert recorder.last.method == "GET"
     assert recorder.last.url.path == "/v1/configuration"
     assert dict(recorder.last.url.params) == {"state": "published"}
-    assert recorder.last.headers["User-Agent"] == f"nbq-python/{__version__}"
+    assert recorder.last.headers["User-Agent"] == f"zelinqa-python/{__version__}"
     assert configuration.state == "published"
+    assert configuration.domain.name == "Qualification mobilier"
+    assert configuration.domain.name != configuration.objective.name
     assert configuration.configuration_version == "cfg_00013"
     assert configuration.objective.qualification_level == "balanced"
-    assert [so.id for so in configuration.sub_objectives] == [
+    assert [so.id for so in configuration.dimensions] == [
         "so_besoin",
         "so_budget",
         "so_livraison",
@@ -186,7 +188,7 @@ def test_list_questions_serialises_every_filter() -> None:
     with sync_client(recorder) as client:
         page = client.list_questions(
             state="draft",
-            sub_objective_id="so_besoin",
+            dimension_id="so_besoin",
             active=True,
             type="single_choice",
             search="canapé",
@@ -197,7 +199,7 @@ def test_list_questions_serialises_every_filter() -> None:
     assert recorder.last.url.path == "/v1/configuration/questions"
     assert dict(recorder.last.url.params) == {
         "state": "draft",
-        "sub_objective_id": "so_besoin",
+        "dimension_id": "so_besoin",
         "active": "true",
         "type": "single_choice",
         "search": "canapé",
@@ -272,14 +274,14 @@ async def test_async_iter_questions_follows_the_cursor() -> None:
 def test_export_questions_csv_asks_for_text_csv() -> None:
     recorder = Recorder(csv_response(csv_export_example()))
     with sync_client(recorder) as client:
-        export = client.export_questions_csv(sub_objective_id="so_besoin")
+        export = client.export_questions_csv(dimension_id="so_besoin")
 
     assert recorder.last.headers["Accept"] == "text/csv"
     assert dict(recorder.last.url.params) == {
-        "sub_objective_id": "so_besoin",
+        "dimension_id": "so_besoin",
         "format": "csv",
     }
-    assert export.splitlines()[0] == "id,text,type,choices,sub_objective_id,active"
+    assert export.splitlines()[0] == "id,text,type,choices,dimension_id,active"
 
 
 async def test_async_export_questions_csv() -> None:
@@ -339,7 +341,7 @@ def test_apply_changes_sends_typed_models() -> None:
                         id="sdk_q_delai",
                         text="Quand souhaitez-vous être livré ?",
                         type="single_choice",
-                        sub_objective_id="sdk_so_delai",
+                        dimension_id="sdk_so_delai",
                         active=True,
                         choices=[{"id": "sdk_c_1m", "label": "Dans le mois"}],
                     ),
@@ -370,7 +372,7 @@ def test_apply_changes_sends_typed_models() -> None:
                     "id": "sdk_q_delai",
                     "text": "Quand souhaitez-vous être livré ?",
                     "type": "single_choice",
-                    "sub_objective_id": "sdk_so_delai",
+                    "dimension_id": "sdk_so_delai",
                     "active": True,
                     "choices": [{"id": "sdk_c_1m", "label": "Dans le mois"}],
                 },
@@ -513,7 +515,7 @@ def test_wait_for_compilation_returns_a_failure_without_raising() -> None:
 def test_wait_for_compilation_times_out() -> None:
     recorder = Recorder(json_response(200, COMPILATION_RUNNING))
     with sync_client(recorder) as client:
-        with pytest.raises(NBQCompilationTimeoutError) as captured:
+        with pytest.raises(ZelinqaCompilationTimeoutError) as captured:
             client.wait_for_compilation("cmp_01K2QF", poll_interval=0.01, timeout=0.05)
 
     assert captured.value.compilation_id == "cmp_01K2QF"
@@ -544,5 +546,5 @@ async def test_async_wait_for_compilation() -> None:
 async def test_async_wait_for_compilation_times_out() -> None:
     recorder = Recorder(json_response(200, COMPILATION_RUNNING))
     async with async_client(recorder) as client:
-        with pytest.raises(NBQCompilationTimeoutError):
+        with pytest.raises(ZelinqaCompilationTimeoutError):
             await client.wait_for_compilation("cmp_01K2QF", poll_interval=0.01, timeout=0.05)

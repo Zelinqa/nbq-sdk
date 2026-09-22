@@ -1,7 +1,7 @@
 {
-  "name": "@zelinqa/nbq",
+  "name": "@zelinqa/sdk",
   "version": "1.0.0",
-  "description": "Official TypeScript SDK for the Zelinqa NBQ Engine V1 API",
+  "description": "Official TypeScript SDK for the Zelinqa V1 API",
   "license": "Apache-2.0",
   "author": {
     "name": "Zelinqa",
@@ -17,11 +17,10 @@
     "url": "https://github.com/Zelinqa/nbq-sdk/issues"
   },
   "keywords": [
-    "nbq",
+    "zelinqa",
     "next-best-question",
     "conversational-ai",
-    "qualification",
-    "zelinqa"
+    "qualification"
   ],
   "type": "module",
   "main": "./typescript/dist/index.cjs",

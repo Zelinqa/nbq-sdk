@@ -27,14 +27,14 @@ jobs:
     environment: staging-live
     timeout-minutes: 45
     env:
-      NBQ_LIVE: '1'
-      NBQ_LIVE_BASE_URL: ${{ inputs.base_url }}
-      NBQ_LIVE_RUNTIME_KEY: ${{ secrets.NBQ_LIVE_RUNTIME_KEY }}
-      NBQ_LIVE_CONFIG_READ_KEY: ${{ secrets.NBQ_LIVE_CONFIG_READ_KEY }}
-      NBQ_LIVE_CONFIG_WRITE_KEY: ${{ secrets.NBQ_LIVE_CONFIG_WRITE_KEY }}
-      NBQ_LIVE_CONFIG_PUBLISH_KEY: ${{ secrets.NBQ_LIVE_CONFIG_PUBLISH_KEY }}
-      NBQ_LIVE_CONFIG_MANAGE_KEY: ${{ secrets.NBQ_LIVE_CONFIG_MANAGE_KEY }}
-      NBQ_LIVE_REVOKED_KEY: ${{ secrets.NBQ_LIVE_REVOKED_KEY }}
+      ZELINQA_LIVE: '1'
+      ZELINQA_LIVE_BASE_URL: ${{ inputs.base_url }}
+      ZELINQA_LIVE_RUNTIME_KEY: ${{ secrets.NBQ_LIVE_RUNTIME_KEY }}
+      ZELINQA_LIVE_CONFIG_READ_KEY: ${{ secrets.NBQ_LIVE_CONFIG_READ_KEY }}
+      ZELINQA_LIVE_CONFIG_WRITE_KEY: ${{ secrets.NBQ_LIVE_CONFIG_WRITE_KEY }}
+      ZELINQA_LIVE_CONFIG_PUBLISH_KEY: ${{ secrets.NBQ_LIVE_CONFIG_PUBLISH_KEY }}
+      ZELINQA_LIVE_CONFIG_MANAGE_KEY: ${{ secrets.NBQ_LIVE_CONFIG_MANAGE_KEY }}
+      ZELINQA_LIVE_REVOKED_KEY: ${{ secrets.NBQ_LIVE_REVOKED_KEY }}
     steps:
       - uses: actions/checkout@v4
 

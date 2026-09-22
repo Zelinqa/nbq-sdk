@@ -17,7 +17,7 @@ await replaceVersion(
   (value) => `version = "${value}"`,
 );
 await replaceVersion(
-  new URL("../python/src/nbq/_version.py", import.meta.url),
+  new URL("../python/src/zelinqa/_version.py", import.meta.url),
   /^__version__ = "[^"]+"$/m,
   (value) => `__version__ = "${value}"`,
 );
