@@ -559,7 +559,7 @@ export interface components {
              *     traits de soulignement.
              *
              *     **Volontairement non figé en énumération.** Les validations de
-             *     publication se stabiliseront avec Zelinqa-108, Zelinqa-306 et Zelinqa-311, en
+             *     publication se stabiliseront avec NBQ-108, NBQ-306 et NBQ-311, en
              *     particulier celles liées à la génération des cibles d'exploration :
              *     fermer le catalogue maintenant imposerait une modification du contrat
              *     à chaque validation découverte, et certains codes envisagés se
@@ -870,7 +870,7 @@ export interface components {
          *     une dépendance des intégrations.
          *
          *     **Invariants garantis par le moteur**, non exprimés en JSON Schema pour
-         *     rester générables en SDK, et couverts par les tests de contrat (Zelinqa-313) :
+         *     rester générables en SDK, et couverts par les tests de contrat (NBQ-313) :
          *
          *     - `action: ask` implique `decision_id` non nul, `stop_reason` nul et au
          *       moins un candidat ;
