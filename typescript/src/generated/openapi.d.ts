@@ -185,8 +185,7 @@ export interface paths {
         };
         /**
          * Sonde de disponibilité
-         * @description Route publique sans authentification, conservée depuis la bêta 0.9. Ne
-         *     renvoie aucune donnée de tenant.
+         * @description Route publique sans authentification. Ne renvoie aucune donnée de tenant.
          */
         get: operations["health"];
         put?: never;
@@ -207,18 +206,11 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * [Déprécié 0.9] Calculer la question suivante sans session serveur
+         * [Déprécié] Calculer la question suivante sans session serveur
          * @deprecated
-         * @description **Route de la bêta 0.9, conservée pour ne pas casser les intégrations
-         *     existantes.** Elle reste servie à l'identique et n'évolue plus.
-         *
-         *     Différence structurante avec la V1 : ici le client fournit lui-même
-         *     `session_id` et renvoie l'historique à chaque appel ; le moteur ne conserve
-         *     aucun état. En V1, Zelinqa alloue la session via `POST /v1/sessions` et maintient
-         *     l'état canonique côté serveur.
-         *
-         *     Remplacée par `POST /v1/sessions/{session_id}/next`. Correspondance champ à
-         *     champ dans `docs/api-compat-0.9-to-v1.md`.
+         * @description **Route dépréciée.** Pour sélectionner la question suivante, créez une
+         *     session avec `POST /v1/sessions`, puis utilisez
+         *     `POST /v1/sessions/{session_id}/next`.
          *
          *     Une date de retrait sera annoncée ultérieurement par un en-tête `Sunset` sur
          *     cette route ; elle n'est pas fixée dans ce contrat.
@@ -246,8 +238,7 @@ export interface paths {
          *     candidats** : appeler `POST /v1/sessions/{session_id}/next` ensuite.
          *
          *     `initial_history` sert uniquement à reprendre une conversation commencée
-         *     ailleurs — migration d'un intégrateur 0.9, ou échanges antérieurs à
-         *     l'activation de Zelinqa. Il est consommé **une seule fois** en mémoire pour
+         *     ailleurs, avant l'activation de Zelinqa. Il est consommé **une seule fois** en mémoire pour
          *     construire l'état initial, puis n'est persisté ni dans l'état, ni dans le
          *     journal, ni dans les logs applicatifs, et n'est jamais renvoyé. Si le
          *     tracing LLM est activé par Zelinqa, le prompt peut apparaître dans
@@ -299,9 +290,9 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * [Déprécié 0.9] Déclarer le résultat d'une conversation
+         * [Déprécié] Déclarer le résultat d'une conversation
          * @deprecated
-         * @description **Route de la bêta 0.9.** Remplacée par
+         * @description **Route dépréciée.** Utilisez
          *     `POST /v1/sessions/{session_id}/feedback`, dont le vocabulaire est générique
          *     et ne suppose pas un contexte commercial.
          *
@@ -358,9 +349,6 @@ export interface paths {
          *     conversation est toujours une qualification commerciale. `label` permet à
          *     l'intégrateur de nommer son propre résultat métier — « achat »,
          *     « rendez-vous », « dossier complété ».
-         *
-         *     Cette route remplace `POST /v1/sessions/{session_id}/conversion` de la
-         *     bêta 0.9.
          */
         post: operations["submitSessionFeedback"];
         delete?: never;
@@ -2015,7 +2003,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                /** @description Optionnelle en 0.9 ; obligatoire sur toutes les mutations V1. */
+                /** @description Optionnelle sur cette route dépréciée ; obligatoire sur les mutations de session et de configuration. */
                 "Idempotency-Key"?: string;
             };
             path: {

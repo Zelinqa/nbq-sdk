@@ -1,13 +1,13 @@
 # Publishing Zelinqa 1.0.0
 
-**Prepared, not published. Only Farouk approves merge and registry publication.**
+**Prepared, not published. Merge and registry publication require maintainer approval.**
 
-New names: Python `zelinqa`, TypeScript `@zelinqa/sdk`. Existing `nbq` and
-`@zelinqa/nbq` 0.9 packages are separate and must not be overwritten.
+Release targets: Python `zelinqa` and TypeScript `@zelinqa/sdk`.
+Publish only to these registry projects; do not overwrite other distributions.
 
 ## Gates
 
-- Reviewed release commit merged by Farouk; functional CI green on that commit.
+- Reviewed release commit merged by a maintainer; functional CI green on that commit.
 - Python: `uv sync --locked; uv run pytest; uv run mypy python/src; uv build`.
 - TypeScript: `pnpm install --frozen-lockfile; pnpm check; pnpm build; pnpm pack`.
 - Clean wheel install and ESM/CommonJS tarball imports tested.
@@ -26,7 +26,7 @@ A pending publisher does not reserve a name. Do not publish a placeholder.
 [Official PyPI instructions](https://docs.pypi.org/trusted-publishers/creating-a-project-through-oidc/).
 
 Protect the GitHub `pypi` environment with maintainer approval and main-only refs.
-After approval, Farouk runs from this repository:
+After approval, a maintainer runs from this repository:
 
 ```bash
 gh workflow run publish-python-sdk.yml --ref main -f confirm=publish-zelinqa
@@ -40,7 +40,7 @@ and `import zelinqa`. Never reuse a published version.
 `@zelinqa/sdk` is NOT the existing `@zelinqa/nbq` package.
 Verify organization ownership and configure its own publisher; the old package's
 publisher does not transfer. If npm requires a first authenticated publication,
-Farouk must perform that setup interactively with 2FA, using the tested tarball
+A maintainer must perform that setup interactively with 2FA, using the tested tarball
 `zelinqa-sdk-1.0.0.tgz`, before enabling OIDC for subsequent releases.
 Do not introduce a permanent token into CI.
 

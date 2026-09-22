@@ -9,6 +9,8 @@
 - Current question metadata: editorial `source` and semi-open `selection_mode`.
 - Configuration read/edit/publish, compilation polling, CSV export and audit.
 - Typed errors, optimistic concurrency, retry/idempotency support.
+- The 0.9 routes are no longer exposed by the SDKs. The `nbq` and
+  `@zelinqa/nbq` 0.9 packages remain separate distributions.
 
 Migration: replace `nbq` imports / `@zelinqa/nbq`, `NBQClient` class names and
 `NBQ_*` SDK environment variables with the documented Zelinqa equivalents.

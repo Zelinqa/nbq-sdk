@@ -10,6 +10,7 @@ SDK have drifted apart.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -22,7 +23,7 @@ from zelinqa import models
 SCHEMA_PREFIX = "#/components/schemas/"
 EXAMPLE_PREFIX = "#/components/examples/"
 
-#: The 0.9 routes are deliberately absent from the V1 SDK surface.
+#: Deprecated compatibility routes are absent from the V1 SDK surface.
 EXCLUDED_SCHEMA_PREFIXES = ("Legacy",)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -109,6 +110,24 @@ def test_spec_snapshot_is_readable() -> None:
     assert SPEC["openapi"].startswith("3.1")
 
 
+@pytest.mark.parametrize(
+    "relative_path",
+    [
+        "README.md",
+        "python/README.md",
+        "typescript/README.md",
+        "PUBLISHING.md",
+        "RELEASE-VALIDATION.md",
+        "openapi/nbq-v1.openapi.yaml",
+        "typescript/src/types.ts",
+        "typescript/src/generated/openapi.d.ts",
+    ],
+)
+def test_public_documentation_describes_current_api(relative_path: str) -> None:
+    text = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
+    assert not re.search(r"\bv?0\.9\b", text, re.IGNORECASE), relative_path
+
+
 def test_every_named_schema_has_a_model() -> None:
     missing = [name for name in MODELLED_SCHEMA_NAMES if not hasattr(models, name)]
     assert not missing, f"no model for: {', '.join(missing)}"
@@ -126,7 +145,7 @@ def test_named_schema_is_exposed(name: str) -> None:
 
 def test_legacy_schemas_are_not_exposed() -> None:
     legacy = [name for name in SCHEMA_NAMES if name.startswith(EXCLUDED_SCHEMA_PREFIXES)]
-    assert legacy, "the snapshot should still document the 0.9 routes"
+    assert legacy, "the snapshot should still document deprecated compatibility routes"
     leaked = [name for name in legacy if hasattr(models, name)]
     assert not leaked, f"the V1 SDK must not expose: {', '.join(leaked)}"
 
