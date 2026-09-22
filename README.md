@@ -16,8 +16,8 @@ frozen V1 contract — never the other way round. Field names on the wire are
 ## Status
 
 **1.0.0 is prepared, not published.** The packages are not on PyPI or npm at
-version 1.0.0 yet: publication is a manual step that waits for the Codex review
-and Farouk's explicit go. See [`PUBLISHING.md`](PUBLISHING.md).
+version 1.0.0 yet: publication requires release review and maintainer approval.
+See [`PUBLISHING.md`](PUBLISHING.md).
 
 | | Python | TypeScript |
 |---|---|---|
@@ -346,11 +346,7 @@ from the `staging-live` environment), never on a pull request.
 
 ## Changelog
 
-### 1.0.0 — prepared
-
-- V1 SDK surface in both languages: runtime and configuration clients, session
-  handles, typed errors, generated types, idempotency and retry policy.
-- 0.9 routes removed from the SDKs.
+See [CHANGELOG.md](CHANGELOG.md) for release history.
 
 ## License
 

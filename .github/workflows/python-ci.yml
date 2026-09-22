@@ -3,6 +3,9 @@ name: Python SDK CI
 on:
   pull_request:
     paths:
+      - '**/*.md'
+      - 'typescript/src/types.ts'
+      - 'typescript/src/generated/**'
       - 'python/**'
       - 'openapi/**'
       - 'pyproject.toml'
@@ -11,6 +14,9 @@ on:
   push:
     branches: [main]
     paths:
+      - '**/*.md'
+      - 'typescript/src/types.ts'
+      - 'typescript/src/generated/**'
       - 'python/**'
       - 'openapi/**'
       - 'pyproject.toml'

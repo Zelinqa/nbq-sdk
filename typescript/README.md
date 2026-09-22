@@ -11,8 +11,7 @@ the OpenAPI contract. Node ≥ 22.
 
 ## Install
 
-**Zelinqa 1.0.0 is prepared, not yet published.** This is a new package name,
-not an automatic upgrade of `@zelinqa/nbq` 0.9. Use
+**Zelinqa 1.0.0 is prepared, not yet published.** Use
 `await session.answer({ userText: "the actual reply" })` after `session.next()`.
 Choices use `{ choiceLabels: ["Exact label"] }`. Technical IDs stay in the handle;
 see the root README for restart/concurrency rules.

@@ -18,8 +18,7 @@ uv add zelinqa          # or: pip install zelinqa
 
 ## Two clients, two keys
 
-**Zelinqa 1.0.0 is prepared, not yet published.** This is a new package name,
-not an automatic upgrade of `nbq` 0.9. Use `session.answer("the actual reply")`
+**Zelinqa 1.0.0 is prepared, not yet published.** Use `session.answer("the actual reply")`
 after `session.next()` to avoid copying technical IDs. Choices use
 `session.answer(choice_labels=["Exact label"])`. Async handles offer the same
 methods with `await`. See the root README for restart/concurrency rules.
@@ -409,11 +408,7 @@ with secrets from the `staging-live` environment.
 
 ## Changelog
 
-### 1.0.0
-
-- First V1 release: sessions, next question, events, session read, feedback,
-  and the full configuration surface including publication.
-- The 0.9 routes are removed from the SDK.
+See the [changelog](https://github.com/Zelinqa/nbq-sdk/blob/main/CHANGELOG.md) for release history.
 
 ## License
 

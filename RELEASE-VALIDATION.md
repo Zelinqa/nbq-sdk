@@ -28,7 +28,7 @@ The functional CI jobs execute pytest and Vitest (not just lint/build). Live sui
 are opt-in, not run on PRs; the GitHub `staging-live` environment still needs protected
 credentials before its manual workflow can repeat this recipe.
 
-Farouk must review and merge; nothing was published by this work. New PyPI/npm
+Maintainer review and approval are required; no package has been published. New PyPI/npm
 projects need publisher configuration. Existing `nbq` / `@zelinqa/nbq` packages are
 not overwritten or silently migrated. See `PUBLISHING.md`.
 

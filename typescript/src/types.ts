@@ -6,7 +6,7 @@
  * hand-copied: the contract stays the single source of truth, and field names are
  * snake_case exactly as they appear on the wire.
  *
- * The four `Legacy*` schemas of the 0.9 beta are intentionally not exported.
+ * Deprecated compatibility schemas (`Legacy*`) are intentionally not exported.
  */
 import type { components } from "./generated/openapi.js";
 
