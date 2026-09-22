@@ -1,4 +1,4 @@
-"""Shared transport for the NBQ clients.
+"""Shared transport for the Zelinqa clients.
 
 Everything that decides *what* to send and *whether to try again* lives here as
 pure functions. Only :class:`SyncExecutor` and :class:`AsyncExecutor` touch the
@@ -279,7 +279,7 @@ def json_payload(attempt: Attempt) -> dict[str, Any]:
     if not isinstance(attempt.payload, Mapping):
         raise api_error_from_response(
             attempt.status_code,
-            {"message": "the NBQ API returned a body that is not a JSON object"},
+            {"message": "the Zelinqa API returned a body that is not a JSON object"},
             attempt.headers,
         )
     return dict(attempt.payload)
@@ -351,7 +351,7 @@ class SyncExecutor(_Executor):
                 break
             time.sleep(delay)
         if attempt is None:
-            raise ZelinqaConnectionError("unable to reach the NBQ API") from last_error
+            raise ZelinqaConnectionError("unable to reach the Zelinqa API") from last_error
         if not attempt.is_success:
             raise error_for(attempt)
         return attempt
@@ -402,7 +402,7 @@ class AsyncExecutor(_Executor):
                 break
             await asyncio.sleep(delay)
         if attempt is None:
-            raise ZelinqaConnectionError("unable to reach the NBQ API") from last_error
+            raise ZelinqaConnectionError("unable to reach the Zelinqa API") from last_error
         if not attempt.is_success:
             raise error_for(attempt)
         return attempt

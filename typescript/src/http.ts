@@ -1,5 +1,5 @@
 /**
- * Shared request executor of the NBQ Engine V1 SDK.
+ * Shared request executor of the Zelinqa V1 SDK.
  *
  * Zero runtime dependency: the global `fetch` is used unless the caller injects
  * one. The executor owns the cross-cutting concerns both clients need — headers,
@@ -16,7 +16,7 @@ import { VERSION } from "./version.js";
 export const DEFAULT_BASE_URL = "https://api.zelinqa.ai";
 export const DEFAULT_TIMEOUT_MS = 30_000;
 export const DEFAULT_MAX_RETRIES = 2;
-export const USER_AGENT = `nbq-typescript/${VERSION}`;
+export const USER_AGENT = `zelinqa-typescript/${VERSION}`;
 
 const RETRIABLE_STATUS_CODES: ReadonlySet<number> = new Set([429, 500, 502, 503, 504]);
 const BACKOFF_BASE_MS = 500;
@@ -150,7 +150,7 @@ function sleep(milliseconds: number, signal: AbortSignal | undefined): Promise<v
   });
 }
 
-/** Executes NBQ requests: headers, idempotency, retries, timeouts, error mapping. */
+/** Executes Zelinqa requests: headers, idempotency, retries, timeouts, error mapping. */
 export class HttpTransport {
   readonly #apiKey: string;
   readonly #baseUrl: string;
@@ -195,7 +195,7 @@ export class HttpTransport {
     const response = await this.#send(request);
     const payload = await readPayload(response);
     if (payload === undefined || typeof payload !== "object" || payload === null) {
-      throw new ZelinqaAPIError("NBQ API returned a non-JSON response", {
+      throw new ZelinqaAPIError("Zelinqa API returned a non-JSON response", {
         statusCode: response.status,
         requestId: response.headers.get("X-Request-Id") ?? undefined,
       });
@@ -235,7 +235,7 @@ export class HttpTransport {
           throw error;
         }
         if (attempt >= this.#maxRetries) {
-          throw new ZelinqaConnectionError("Unable to reach the NBQ API", { cause: error });
+          throw new ZelinqaConnectionError("Unable to reach the Zelinqa API", { cause: error });
         }
         await sleep(backoffMs(attempt), callerSignal);
         continue;

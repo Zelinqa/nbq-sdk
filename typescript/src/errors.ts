@@ -1,5 +1,5 @@
 /**
- * Typed error hierarchy of the NBQ Engine V1 SDK.
+ * Typed error hierarchy of the Zelinqa V1 SDK.
  *
  * Every failure raised by a client is an `ZelinqaError`. HTTP failures carry the V1
  * error envelope (`code`, `message`, `request_id`, `details`) when the service
@@ -137,7 +137,7 @@ export class ZelinqaStateVersionConflictError extends ZelinqaConflictError {
 /** `409 idempotency_key_reused` — same key, different body. Definitive. */
 export class ZelinqaIdempotencyKeyReusedError extends ZelinqaConflictError {}
 
-/** `409 compilation_in_progress` — a job is already queued or running for this NBQ. */
+/** `409 compilation_in_progress` — a job is already queued or running for this Zelinqa. */
 export class ZelinqaCompilationInProgressError extends ZelinqaConflictError {
   public readonly compilationId: string | undefined;
   public readonly compilationStatus: string | undefined;
@@ -305,7 +305,8 @@ export function apiErrorFromResponse(
   const message =
     statusCode === 403 && code === undefined
       ? GATEWAY_FORBIDDEN_MESSAGE
-      : (stringOrUndefined(body?.message) ?? `NBQ API request failed with status ${statusCode}`);
+      : (stringOrUndefined(body?.message) ??
+        `Zelinqa API request failed with status ${statusCode}`);
   const retryAfter =
     parseRetryAfterHeader(headers?.get("Retry-After")) ??
     numberOrUndefined(details?.retry_after_seconds);

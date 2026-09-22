@@ -2,14 +2,14 @@
 "@zelinqa/sdk": major
 ---
 
-NBQ Engine V1 — complete rewrite of the SDK surface (1.0.0).
+Zelinqa V1 — complete rewrite of the SDK surface (1.0.0).
 
 The SDK now targets the V1 contract (`openapi/nbq-v1.openapi.yaml`) and exposes
 two least-privilege clients:
 
 - `ZelinqaClient` (scope `runtime`): `createSession`, `next`, `applyEvents`,
   `getSession`, `submitFeedback`, plus `startSession` / `resumeSession` returning
-  a `Session` handle that tracks `state_version` for you. NBQ keeps the canonical
+  a `Session` handle that tracks `state_version` for you. Zelinqa keeps the canonical
   session state server-side; `refresh()` replaces any client-side resume token.
 - `ZelinqaConfigurationClient` (scopes `configuration:read` / `configuration:write` /
   `configuration:publish`): `getConfiguration`, `listQuestions`,
@@ -17,6 +17,11 @@ two least-privilege clients:
   `publish`, `getCompilation`, `waitForCompilation`.
 
 Also new:
+
+- consistent public domain/dimension vocabulary (`dimensions`, `dimension_id`),
+  including configuration changes, progress, question filters and audit;
+- `configuration.domain.name` exposes the current domain name independently
+  from the published objective name. Existing IDs and API keys stay unchanged;
 
 - typed error hierarchy mapped from the V1 error envelope (`code` first, then
   HTTP status), with `ZelinqaStateVersionConflictError`,

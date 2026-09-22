@@ -24,7 +24,7 @@ pnpm add @zelinqa/sdk   # or npm install / yarn add
 
 ## Security — backend only
 
-An Zelinqa key is a bearer credential scoped to one tenant. **Never ship it to a
+A Zelinqa key is a bearer credential scoped to one domain and its permissions. **Never ship it to a
 browser, a mobile bundle or any client-side code**, and never log it. The SDK
 keeps the key in a private field, writes it to exactly one place — the
 `Authorization` header — and never puts it in an error, a message, a stack trace
@@ -145,7 +145,7 @@ stateVersion = decision.versions.state_version;
 
 const state = await runtime.applyEvents("ses_01J8Z", {
   state_version: stateVersion,
-  client_updates: { sub_objectives: [{ id: "so_delivery", operation: "exclude" }] },
+  client_updates: { dimensions: [{ id: "so_delivery", operation: "exclude" }] },
 });
 stateVersion = state.versions.state_version;
 ```
@@ -197,7 +197,7 @@ for await (const question of configuration.iterateQuestions({ active: true })) {
 }
 
 // Spreadsheet export includes selection_mode and source.
-const csv = await configuration.exportQuestionsCsv({ sub_objective_id: "so_besoin" });
+const csv = await configuration.exportQuestionsCsv({ dimension_id: "so_besoin" });
 
 // Atomic, ordered draft edit. Pin the revision you read to avoid clobbering
 // another editor's work.
@@ -211,7 +211,7 @@ const applied = await configuration.applyChanges({
         id: "q_delivery_window",
         text: "When would you like it delivered?",
         type: "single_choice",
-        sub_objective_id: "so_livraison",
+        dimension_id: "so_livraison",
         active: true,
         choices: [
           { id: "choice_1m", label: "Within the month", maps_to_value: "dans_le_mois" },

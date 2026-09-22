@@ -80,10 +80,12 @@ describe("ZelinqaConfigurationClient.getConfiguration", () => {
     expect(request.headers).toMatchObject({
       Authorization: `Bearer ${TEST_API_KEY}`,
       Accept: "application/json",
-      "User-Agent": `nbq-typescript/${VERSION}`,
+      "User-Agent": `zelinqa-typescript/${VERSION}`,
     });
     expect(configuration).toEqual(CONFIGURATION);
     expect(configuration.state).toBe("published");
+    expect(configuration.domain.name).toBe("Qualification mobilier");
+    expect(configuration.domain.name).not.toBe(configuration.objective.name);
     expect(configuration.questions).toHaveLength(3);
   });
 
@@ -135,7 +137,7 @@ describe("ZelinqaConfigurationClient.listQuestions", () => {
 
     const page = await client(recorder.fetch).listQuestions({
       state: "published",
-      sub_objective_id: "so_besoin",
+      dimension_id: "so_besoin",
       active: true,
       type: "single_choice",
       search: "canapé",
@@ -147,7 +149,7 @@ describe("ZelinqaConfigurationClient.listQuestions", () => {
     expect(request.path).toBe("/v1/configuration/questions");
     expect(Object.fromEntries(new URL(request.url).searchParams)).toEqual({
       state: "published",
-      sub_objective_id: "so_besoin",
+      dimension_id: "so_besoin",
       active: "true",
       type: "single_choice",
       search: "canapé",
@@ -205,7 +207,7 @@ describe("ZelinqaConfigurationClient.exportQuestionsCsv", () => {
     const recorder = recordFetch([() => textResponse(csv)]);
 
     const exported = await client(recorder.fetch).exportQuestionsCsv({
-      sub_objective_id: "so_besoin",
+      dimension_id: "so_besoin",
       limit: 10,
       cursor: "cur_1",
     });
@@ -213,11 +215,11 @@ describe("ZelinqaConfigurationClient.exportQuestionsCsv", () => {
     const request = at(recorder.requests, 0);
     expect(request.headers.Accept).toBe("text/csv");
     expect(Object.fromEntries(new URL(request.url).searchParams)).toEqual({
-      sub_objective_id: "so_besoin",
+      dimension_id: "so_besoin",
       format: "csv",
     });
     expect(exported).toBe(csv);
-    expect(exported.split("\n")[0]).toBe("id,text,type,choices,sub_objective_id,active");
+    expect(exported.split("\n")[0]).toBe("id,text,type,choices,dimension_id,active");
   });
 });
 

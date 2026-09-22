@@ -55,7 +55,7 @@ describe("ZelinqaClient.createSession", () => {
       Accept: "application/json",
       "Content-Type": "application/json",
       "Idempotency-Key": "create-session-8842",
-      "User-Agent": `nbq-typescript/${VERSION}`,
+      "User-Agent": `zelinqa-typescript/${VERSION}`,
     });
     expect(parseBody(request)).toEqual(body);
     expect(state).toEqual(SESSION_NEUVE);
