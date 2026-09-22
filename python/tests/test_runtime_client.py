@@ -293,13 +293,13 @@ def test_apply_events_sends_client_updates() -> None:
         client.apply_events(
             "ses_01J8Z",
             state_version=2,
-            client_updates={"sub_objectives": [{"id": "so_livraison", "operation": "exclude"}]},
+            client_updates={"dimensions": [{"id": "so_livraison", "operation": "exclude"}]},
         )
 
     assert recorder.last.url.path == "/v1/sessions/ses_01J8Z/events"
     assert recorder.body() == {
         "state_version": 2,
-        "client_updates": {"sub_objectives": [{"id": "so_livraison", "operation": "exclude"}]},
+        "client_updates": {"dimensions": [{"id": "so_livraison", "operation": "exclude"}]},
     }
     assert recorder.last.headers["Idempotency-Key"]
 

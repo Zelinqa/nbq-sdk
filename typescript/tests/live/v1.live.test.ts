@@ -2,7 +2,7 @@
  * Live acceptance suite of `@zelinqa/sdk` 1.0.0 against the staging API.
  *
  * Opt-in: the whole file is skipped unless `ZELINQA_LIVE=1`. It runs against the
- * throwaway NBQ "SDK MCP V1 Recette" and is re-runnable — the corpus is upserted
+ * throwaway Zelinqa "SDK MCP V1 Recette" and is re-runnable — the corpus is upserted
  * (`create` what is missing, `update` what exists) rather than recreated.
  *
  * Keys are least privilege and deliberately split, because the deployed gateway
@@ -31,10 +31,10 @@ import {
   type ConfigurationChange,
   type ConfigurationResponse,
   type ConfiguredQuestion,
+  type Dimension,
   type NextResponse,
   type Objective,
   type SessionState,
-  type SubObjective,
   type SuccessInformation,
   ZelinqaAuthenticationError,
   ZelinqaClient,
@@ -90,14 +90,14 @@ function sleep(milliseconds: number): Promise<void> {
 
 const OBJECTIVE: Objective = {
   name: "SDK MCP V1 Recette",
-  description: "NBQ jetable pour la recette des SDK et du serveur MCP.",
+  description: "Zelinqa jetable pour la recette des SDK et du serveur MCP.",
   qualification_level: "balanced",
   max_turns: 8,
   candidates_per_call: 2,
   order_strength: 0.35,
 };
 
-const SUB_OBJECTIVES: readonly SubObjective[] = [
+const SUB_OBJECTIVES: readonly Dimension[] = [
   { id: "sdk_so_besoin", name: "Besoin", order_position: 0, completion_role: "blocking" },
   { id: "sdk_so_budget", name: "Budget", order_position: 1, completion_role: "blocking" },
   { id: "sdk_so_delai", name: "Délai", order_position: 2, completion_role: "contributing" },
@@ -110,7 +110,7 @@ const QUESTIONS: readonly ConfiguredQuestion[] = [
     type: "open",
     selection_mode: null,
     source: "user",
-    sub_objective_id: "sdk_so_besoin",
+    dimension_id: "sdk_so_besoin",
     active: true,
     choices: [],
   },
@@ -120,7 +120,7 @@ const QUESTIONS: readonly ConfiguredQuestion[] = [
     type: "single_choice",
     selection_mode: "single",
     source: "user",
-    sub_objective_id: "sdk_so_besoin",
+    dimension_id: "sdk_so_besoin",
     active: true,
     choices: [
       { id: "sdk_c_contemporain", label: "Contemporain", maps_to_value: "contemporain" },
@@ -134,7 +134,7 @@ const QUESTIONS: readonly ConfiguredQuestion[] = [
     type: "open",
     selection_mode: null,
     source: "user",
-    sub_objective_id: "sdk_so_budget",
+    dimension_id: "sdk_so_budget",
     active: true,
     choices: [],
   },
@@ -144,7 +144,7 @@ const QUESTIONS: readonly ConfiguredQuestion[] = [
     type: "single_choice",
     selection_mode: "single",
     source: "user",
-    sub_objective_id: "sdk_so_delai",
+    dimension_id: "sdk_so_delai",
     active: true,
     choices: [
       { id: "sdk_c_1m", label: "Dans le mois", maps_to_value: "dans_le_mois" },
@@ -158,7 +158,7 @@ const QUESTIONS: readonly ConfiguredQuestion[] = [
     type: "single_choice",
     selection_mode: "single",
     source: "user",
-    sub_objective_id: "sdk_so_besoin",
+    dimension_id: "sdk_so_besoin",
     active: true,
     choices: [
       { id: "sdk_c_oui", label: "Oui", maps_to_value: true },
@@ -194,9 +194,9 @@ const SUCCESS_INFORMATIONS: readonly SuccessInformation[] = [
   },
 ];
 
-/** Sub-objectives first, then questions, then the informations they collect. */
+/** Dimensions first, then questions, then the informations they collect. */
 function upsertChanges(baseline: ConfigurationResponse | undefined): ConfigurationChange[] {
-  const knownSubObjectives = new Set((baseline?.sub_objectives ?? []).map((entry) => entry.id));
+  const knownDimensions = new Set((baseline?.dimensions ?? []).map((entry) => entry.id));
   const knownQuestions = new Set((baseline?.questions ?? []).map((entry) => entry.id));
   const knownInformations = new Set(
     (baseline?.success_informations ?? []).map((entry) => entry.id),
@@ -204,10 +204,10 @@ function upsertChanges(baseline: ConfigurationResponse | undefined): Configurati
 
   return [
     { entity: "objective", operation: "update", objective: OBJECTIVE },
-    ...SUB_OBJECTIVES.map<ConfigurationChange>((sub_objective) => ({
-      entity: "sub_objective",
-      operation: knownSubObjectives.has(sub_objective.id) ? "update" : "create",
-      sub_objective,
+    ...SUB_OBJECTIVES.map<ConfigurationChange>((dimension) => ({
+      entity: "dimension",
+      operation: knownDimensions.has(dimension.id) ? "update" : "create",
+      dimension,
     })),
     ...QUESTIONS.map<ConfigurationChange>((question) => ({
       entity: "question",
@@ -236,7 +236,7 @@ interface LiveState {
   stateVersion: number;
 }
 
-describe.skipIf(!LIVE).sequential("NBQ Engine V1 — live acceptance", () => {
+describe.skipIf(!LIVE).sequential("Zelinqa V1 — live acceptance", () => {
   let manage: ZelinqaConfigurationClient;
   let write: ZelinqaConfigurationClient;
   let read: ZelinqaConfigurationClient;
@@ -469,10 +469,10 @@ describe.skipIf(!LIVE).sequential("NBQ Engine V1 — live acceptance", () => {
     }
     expect(new Set(iterated)).toEqual(new Set(paginated));
 
-    const bySubObjective = await read.listQuestions({ sub_objective_id: "sdk_so_besoin" });
-    expect(bySubObjective.questions.length).toBeGreaterThan(0);
-    for (const question of bySubObjective.questions) {
-      expect(question.sub_objective_id).toBe("sdk_so_besoin");
+    const byDimension = await read.listQuestions({ dimension_id: "sdk_so_besoin" });
+    expect(byDimension.questions.length).toBeGreaterThan(0);
+    for (const question of byDimension.questions) {
+      expect(question.dimension_id).toBe("sdk_so_besoin");
     }
 
     const byType = await read.listQuestions({ type: "single_choice" });
@@ -485,7 +485,7 @@ describe.skipIf(!LIVE).sequential("NBQ Engine V1 — live acceptance", () => {
 
     const csv = await read.exportQuestionsCsv();
     expect(csv.split("\n")[0]?.trim()).toBe(
-      "id,text,type,selection_mode,choices,source,sub_objective_id,active",
+      "id,text,type,selection_mode,choices,source,dimension_id,active",
     );
     expect(csv).toContain("sdk_q_style");
 

@@ -1,4 +1,4 @@
-"""Runtime clients for the five NBQ session routes.
+"""Runtime clients for the five Zelinqa session routes.
 
 A key with the ``runtime`` scope drives a conversation: create a session, ask
 for the next question, report what happened, read the state back, declare the
@@ -138,7 +138,7 @@ def _session_path(session_id: str, suffix: str = "") -> str:
 
 
 class ZelinqaClient:
-    """Blocking client for the NBQ runtime routes.
+    """Blocking client for the Zelinqa runtime routes.
 
     ``api_key`` falls back to the ``ZELINQA_API_KEY`` environment variable and
     ``base_url`` to ``ZELINQA_BASE_URL``, then ``https://api.zelinqa.ai``.
@@ -338,7 +338,7 @@ class Session:
 
     @property
     def id(self) -> str:
-        """Opaque session identifier assigned by NBQ."""
+        """Opaque session identifier assigned by Zelinqa."""
 
         return self._id
 
@@ -473,7 +473,7 @@ class Session:
 
 
 class AsyncZelinqaClient:
-    """Async client for the NBQ runtime routes. Same surface as :class:`ZelinqaClient`."""
+    """Async client for the Zelinqa runtime routes. Same surface as :class:`ZelinqaClient`."""
 
     def __init__(
         self,
@@ -665,7 +665,7 @@ class AsyncSession:
 
     @property
     def id(self) -> str:
-        """Opaque session identifier assigned by NBQ."""
+        """Opaque session identifier assigned by Zelinqa."""
 
         return self._id
 

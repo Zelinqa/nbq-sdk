@@ -180,7 +180,7 @@ def test_configuration_validation_exposes_parsed_issues() -> None:
     assert isinstance(error, ZelinqaValidationError)
     assert [issue.code for issue in error.issues] == [
         "success_information_without_active_question",
-        "success_information_only_in_optional_sub_objective",
+        "success_information_only_in_optional_dimension",
     ]
     assert error.issues[0].entity == "success_information"
     assert error.issues[0].entity_id == "delivery_window"

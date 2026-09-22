@@ -144,9 +144,11 @@ def test_get_configuration_defaults_to_published() -> None:
     assert dict(recorder.last.url.params) == {"state": "published"}
     assert recorder.last.headers["User-Agent"] == f"zelinqa-python/{__version__}"
     assert configuration.state == "published"
+    assert configuration.domain.name == "Qualification mobilier"
+    assert configuration.domain.name != configuration.objective.name
     assert configuration.configuration_version == "cfg_00013"
     assert configuration.objective.qualification_level == "balanced"
-    assert [so.id for so in configuration.sub_objectives] == [
+    assert [so.id for so in configuration.dimensions] == [
         "so_besoin",
         "so_budget",
         "so_livraison",
@@ -186,7 +188,7 @@ def test_list_questions_serialises_every_filter() -> None:
     with sync_client(recorder) as client:
         page = client.list_questions(
             state="draft",
-            sub_objective_id="so_besoin",
+            dimension_id="so_besoin",
             active=True,
             type="single_choice",
             search="canapé",
@@ -197,7 +199,7 @@ def test_list_questions_serialises_every_filter() -> None:
     assert recorder.last.url.path == "/v1/configuration/questions"
     assert dict(recorder.last.url.params) == {
         "state": "draft",
-        "sub_objective_id": "so_besoin",
+        "dimension_id": "so_besoin",
         "active": "true",
         "type": "single_choice",
         "search": "canapé",
@@ -272,14 +274,14 @@ async def test_async_iter_questions_follows_the_cursor() -> None:
 def test_export_questions_csv_asks_for_text_csv() -> None:
     recorder = Recorder(csv_response(csv_export_example()))
     with sync_client(recorder) as client:
-        export = client.export_questions_csv(sub_objective_id="so_besoin")
+        export = client.export_questions_csv(dimension_id="so_besoin")
 
     assert recorder.last.headers["Accept"] == "text/csv"
     assert dict(recorder.last.url.params) == {
-        "sub_objective_id": "so_besoin",
+        "dimension_id": "so_besoin",
         "format": "csv",
     }
-    assert export.splitlines()[0] == "id,text,type,choices,sub_objective_id,active"
+    assert export.splitlines()[0] == "id,text,type,choices,dimension_id,active"
 
 
 async def test_async_export_questions_csv() -> None:
@@ -339,7 +341,7 @@ def test_apply_changes_sends_typed_models() -> None:
                         id="sdk_q_delai",
                         text="Quand souhaitez-vous être livré ?",
                         type="single_choice",
-                        sub_objective_id="sdk_so_delai",
+                        dimension_id="sdk_so_delai",
                         active=True,
                         choices=[{"id": "sdk_c_1m", "label": "Dans le mois"}],
                     ),
@@ -370,7 +372,7 @@ def test_apply_changes_sends_typed_models() -> None:
                     "id": "sdk_q_delai",
                     "text": "Quand souhaitez-vous être livré ?",
                     "type": "single_choice",
-                    "sub_objective_id": "sdk_so_delai",
+                    "dimension_id": "sdk_so_delai",
                     "active": True,
                     "choices": [{"id": "sdk_c_1m", "label": "Dans le mois"}],
                 },

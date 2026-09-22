@@ -1,5 +1,5 @@
 /**
- * Friendly names for the NBQ Engine V1 contract.
+ * Friendly names for the Zelinqa V1 contract.
  *
  * Every wire type is re-exported from `generated/openapi.d.ts`, which is produced
  * by `pnpm generate:types` from `openapi/nbq-v1.openapi.yaml`. Nothing here is
@@ -26,7 +26,7 @@ export type QuestionSelectionMode = Schemas["QuestionSelectionMode"];
 export type QuestionSource = Schemas["QuestionSource"];
 export type SelectionWarning = Schemas["SelectionWarning"];
 export type StopReason = Schemas["StopReason"];
-export type SubObjectiveOverrideValue = Schemas["SubObjectiveOverrideValue"];
+export type DimensionOverrideValue = Schemas["DimensionOverrideValue"];
 
 /** Configuration state selector shared by the configuration read routes. */
 export type ConfigurationState = "published" | "draft";
@@ -47,10 +47,10 @@ export type DataClientUpdate = Schemas["DataClientUpdate"];
 export type SetDataUpdate = Schemas["SetDataUpdate"];
 export type UnsetDataUpdate = Schemas["UnsetDataUpdate"];
 export type NotApplicableDataUpdate = Schemas["NotApplicableDataUpdate"];
-export type SubObjectiveOverrideUpdate = Schemas["SubObjectiveOverrideUpdate"];
+export type DimensionOverrideUpdate = Schemas["DimensionOverrideUpdate"];
 export type ObjectiveOverrideUpdate = Schemas["ObjectiveOverrideUpdate"];
 export type SelectionOptions = Schemas["SelectionOptions"];
-export type SubObjectiveSelection = Schemas["SubObjectiveSelection"];
+export type DimensionSelection = Schemas["DimensionSelection"];
 export type SessionEventsRequest = Schemas["SessionEventsRequest"];
 export type FeedbackRequest = Schemas["FeedbackRequest"];
 export type FeedbackResponse = Schemas["FeedbackResponse"];
@@ -65,19 +65,20 @@ export type QuestionOutcomeRecord = Schemas["QuestionOutcomeRecord"];
 export type PublicTargetState = Schemas["PublicTargetState"];
 export type ProgressView = Schemas["ProgressView"];
 export type ObjectiveProgress = Schemas["ObjectiveProgress"];
-export type SubObjectiveProgress = Schemas["SubObjectiveProgress"];
+export type DimensionProgress = Schemas["DimensionProgress"];
 export type ObjectiveClientOverrideView = Schemas["ObjectiveClientOverrideView"];
-export type SubObjectiveClientOverrideView = Schemas["SubObjectiveClientOverrideView"];
+export type DimensionClientOverrideView = Schemas["DimensionClientOverrideView"];
 export type PendingDecisionView = Schemas["PendingDecisionView"];
 export type VersionInfo = Schemas["VersionInfo"];
 
 /* ---------------------------------------------------------- Configuration models */
 
 export type ConfigurationResponse = Schemas["ConfigurationResponse"];
+export type DomainMetadata = Schemas["DomainMetadata"];
 /** SDK name for `ConfigurationResponse`. */
 export type Configuration = Schemas["ConfigurationResponse"];
 export type Objective = Schemas["Objective"];
-export type SubObjective = Schemas["SubObjective"];
+export type Dimension = Schemas["Dimension"];
 export type SuccessInformation = Schemas["SuccessInformation"];
 export type ConfiguredQuestion = Schemas["ConfiguredQuestion"];
 export type ConfiguredChoice = Schemas["ConfiguredChoice"];
@@ -90,7 +91,7 @@ export type ConfigurationAuditPage = Schemas["ConfigurationAuditPage"];
 export type ConfigurationChangesRequest = Schemas["ConfigurationChangesRequest"];
 export type ConfigurationChange = Schemas["ConfigurationChange"];
 export type ObjectiveChange = Schemas["ObjectiveChange"];
-export type SubObjectiveChange = Schemas["SubObjectiveChange"];
+export type DimensionChange = Schemas["DimensionChange"];
 export type SuccessInformationChange = Schemas["SuccessInformationChange"];
 export type QuestionChange = Schemas["QuestionChange"];
 export type ConfigurationChangesResponse = Schemas["ConfigurationChangesResponse"];
@@ -106,7 +107,7 @@ export type ErrorEnvelope = Schemas["ErrorEnvelope"];
 export type Fetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
 export interface ZelinqaClientOptions {
-  /** NBQ integration key. Required: the TypeScript SDK never reads the environment. */
+  /** Zelinqa integration key. Required: the TypeScript SDK never reads the environment. */
   readonly apiKey: string;
   /** Absolute HTTP(S) origin. Defaults to `https://api.zelinqa.ai`. */
   readonly baseUrl?: string;
@@ -137,7 +138,7 @@ export interface GetConfigurationQuery {
 /** Query of `GET /v1/configuration/questions`. */
 export interface ListQuestionsQuery {
   readonly state?: ConfigurationState;
-  readonly sub_objective_id?: string;
+  readonly dimension_id?: string;
   readonly active?: boolean;
   readonly type?: QuestionType;
   readonly search?: string;

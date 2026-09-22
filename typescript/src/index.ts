@@ -1,12 +1,12 @@
 /**
- * `@zelinqa/sdk` — official TypeScript SDK for the NBQ Engine V1 API.
+ * `@zelinqa/sdk` — official TypeScript SDK for the Zelinqa V1 API.
  *
  * Two independent clients, one key each, least privilege:
  * - `ZelinqaClient` drives conversations (scope `runtime`);
  * - `ZelinqaConfigurationClient` reads and publishes the question bank
  *   (scopes `configuration:read` / `configuration:write` / `configuration:publish`).
  *
- * Backend only. An NBQ key is a bearer credential: never ship it to a browser or
+ * Backend only. A Zelinqa key is a bearer credential: never ship it to a browser or
  * a mobile bundle.
  */
 export { type AnswerInput, answerTurn } from "./answers.js";
@@ -82,6 +82,14 @@ export type {
   ConversationMessageDelta,
   ConversationSummary,
   DataClientUpdate,
+  Dimension,
+  DimensionChange,
+  DimensionClientOverrideView,
+  DimensionOverrideUpdate,
+  DimensionOverrideValue,
+  DimensionProgress,
+  DimensionSelection,
+  DomainMetadata,
   ErrorCode,
   ErrorEnvelope,
   FeedbackRequest,
@@ -125,13 +133,6 @@ export type {
   SetDataUpdate,
   StopReason,
   StructuredAnswer,
-  SubObjective,
-  SubObjectiveChange,
-  SubObjectiveClientOverrideView,
-  SubObjectiveOverrideUpdate,
-  SubObjectiveOverrideValue,
-  SubObjectiveProgress,
-  SubObjectiveSelection,
   SuccessInformation,
   SuccessInformationChange,
   UnsetDataUpdate,

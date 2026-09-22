@@ -34,7 +34,7 @@ pnpm add @zelinqa/sdk   # or: npm install / yarn add
 
 ## Two clients, two keys
 
-An Zelinqa key carries scopes, and Studio recommends one key per job. Both SDKs are
+A Zelinqa key carries scopes, and Studio recommends one key per job. Both SDKs are
 split the same way.
 
 | Client | Scope | What it does |
@@ -55,7 +55,7 @@ Scope rules worth knowing:
 - `configuration:publish` is also what gates the audit log — it contains
   operator identities.
 - The tenant is never sent by the client. The authorizer resolves the key and
-  injects the tenant, the Zelinqa and the scopes; any `x-tenant-id`, `x-nbq-id` or
+  injects the tenant, the domain and the scopes; any `x-tenant-id`, `x-nbq-id` or
   `x-scopes` header you send is overwritten.
 
 ## Runtime flow
@@ -186,6 +186,7 @@ compilation id.
 ```python
 with ZelinqaConfigurationClient() as studio:
     draft = studio.get_configuration(state="draft")        # needs read + write
+    print(draft.domain.name)                               # current Studio name
     applied = studio.apply_changes(changes, expected_draft_revision=draft.draft_revision)
     queued = studio.publish(expected_draft_revision=applied.draft_revision)
     status = studio.wait_for_compilation(queued.compilation_id, poll_interval=3, timeout=900)
@@ -193,6 +194,7 @@ with ZelinqaConfigurationClient() as studio:
 
 ```ts
 const draft = await studio.getConfiguration({ state: "draft" });
+console.log(draft.domain.name); // current Studio name, not objective.name
 const applied = await studio.applyChanges({
   changes,
   expected_draft_revision: draft.draft_revision ?? undefined,
@@ -275,8 +277,8 @@ The Python SDK reads the environment; **the TypeScript SDK never does** —
 
 ## Security
 
-**These are server-side clients.** An Zelinqa key is a bearer credential granting
-access to your whole question bank and to every session of your tenant. Never
+**These are server-side clients.** A Zelinqa key is a bearer credential restricted
+to its configured domain and scopes. Never
 embed one in a browser, a mobile app or any client you do not control — proxy
 Zelinqa through your own service instead.
 

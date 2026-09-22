@@ -1,5 +1,5 @@
 /**
- * Runtime client of the NBQ Engine V1 API — the five session routes.
+ * Runtime client of the Zelinqa V1 API — the five session routes.
  *
  * Requires a key carrying the `runtime` scope. Keep it on a backend: the key is
  * a bearer credential and must never reach a browser or a mobile bundle.

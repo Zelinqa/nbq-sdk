@@ -142,7 +142,7 @@ describe("apiErrorFromResponse — gateway refusals", () => {
     );
 
     expect(error).toBeInstanceOf(ZelinqaAuthenticationError);
-    expect(error.message).toBe("NBQ API request failed with status 401");
+    expect(error.message).toBe("Zelinqa API request failed with status 401");
     expect(error.requestId).toBe("req_gateway");
   });
 
@@ -307,7 +307,7 @@ describe("end to end through the client", () => {
     vi.useRealTimers();
 
     expect(error).toBeInstanceOf(ZelinqaConnectionError);
-    expect((error as ZelinqaConnectionError).message).toBe("Unable to reach the NBQ API");
+    expect((error as ZelinqaConnectionError).message).toBe("Unable to reach the Zelinqa API");
     expect(recorder.requests).toHaveLength(2);
   });
 
@@ -322,7 +322,7 @@ describe("end to end through the client", () => {
       .catch((cause: unknown) => cause);
 
     expect(error).toBeInstanceOf(ZelinqaAPIError);
-    expect((error as ZelinqaAPIError).message).toBe("NBQ API returned a non-JSON response");
+    expect((error as ZelinqaAPIError).message).toBe("Zelinqa API returned a non-JSON response");
     expect((error as ZelinqaAPIError).requestId).toBe("req_z");
   });
 

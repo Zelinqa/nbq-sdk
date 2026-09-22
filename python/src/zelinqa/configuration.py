@@ -1,4 +1,4 @@
-"""Configuration clients for the NBQ Studio-facing routes.
+"""Configuration clients for the Zelinqa Studio-facing routes.
 
 Reading the published corpus needs ``configuration:read``; reading the draft
 and writing changes need ``configuration:write``; publishing and reading the
@@ -76,7 +76,7 @@ ChangeInput = ConfigurationChange | Mapping[str, Any]
 def _questions_params(
     *,
     state: ConfigurationState | None,
-    sub_objective_id: str | None,
+    dimension_id: str | None,
     active: bool | None,
     type: QuestionType | None,
     search: str | None,
@@ -87,7 +87,7 @@ def _questions_params(
     return query_params(
         {
             "state": state,
-            "sub_objective_id": sub_objective_id,
+            "dimension_id": dimension_id,
             "active": active,
             "type": type,
             "search": search,
@@ -145,7 +145,7 @@ def _validate_polling(poll_interval: float, timeout: float) -> None:
 
 
 class ZelinqaConfigurationClient:
-    """Blocking client for the NBQ configuration routes.
+    """Blocking client for the Zelinqa configuration routes.
 
     ``api_key`` falls back to ``ZELINQA_CONFIGURATION_API_KEY`` then
     ``ZELINQA_API_KEY``; ``base_url`` to ``ZELINQA_BASE_URL`` then
@@ -194,7 +194,7 @@ class ZelinqaConfigurationClient:
     def get_configuration(
         self, *, state: ConfigurationState = "published"
     ) -> ConfigurationResponse:
-        """Read the objective, sub-objectives, success informations and questions."""
+        """Read the objective, dimensions, success informations and questions."""
 
         attempt = self._executor.send(
             Request(method="GET", path=_CONFIGURATION, params=query_params({"state": state}))
@@ -205,7 +205,7 @@ class ZelinqaConfigurationClient:
         self,
         *,
         state: ConfigurationState | None = None,
-        sub_objective_id: str | None = None,
+        dimension_id: str | None = None,
         active: bool | None = None,
         type: QuestionType | None = None,
         search: str | None = None,
@@ -220,7 +220,7 @@ class ZelinqaConfigurationClient:
                 path=_QUESTIONS,
                 params=_questions_params(
                     state=state,
-                    sub_objective_id=sub_objective_id,
+                    dimension_id=dimension_id,
                     active=active,
                     type=type,
                     search=search,
@@ -235,7 +235,7 @@ class ZelinqaConfigurationClient:
         self,
         *,
         state: ConfigurationState | None = None,
-        sub_objective_id: str | None = None,
+        dimension_id: str | None = None,
         active: bool | None = None,
         type: QuestionType | None = None,
         search: str | None = None,
@@ -248,7 +248,7 @@ class ZelinqaConfigurationClient:
         while True:
             page = self.list_questions(
                 state=state,
-                sub_objective_id=sub_objective_id,
+                dimension_id=dimension_id,
                 active=active,
                 type=type,
                 search=search,
@@ -264,7 +264,7 @@ class ZelinqaConfigurationClient:
         self,
         *,
         state: ConfigurationState | None = None,
-        sub_objective_id: str | None = None,
+        dimension_id: str | None = None,
         active: bool | None = None,
         type: QuestionType | None = None,
         search: str | None = None,
@@ -277,7 +277,7 @@ class ZelinqaConfigurationClient:
                 path=_QUESTIONS,
                 params=_questions_params(
                     state=state,
-                    sub_objective_id=sub_objective_id,
+                    dimension_id=dimension_id,
                     active=active,
                     type=type,
                     search=search,
@@ -432,7 +432,7 @@ class AsyncZelinqaConfigurationClient:
     async def get_configuration(
         self, *, state: ConfigurationState = "published"
     ) -> ConfigurationResponse:
-        """Read the objective, sub-objectives, success informations and questions."""
+        """Read the objective, dimensions, success informations and questions."""
 
         attempt = await self._executor.send(
             Request(method="GET", path=_CONFIGURATION, params=query_params({"state": state}))
@@ -443,7 +443,7 @@ class AsyncZelinqaConfigurationClient:
         self,
         *,
         state: ConfigurationState | None = None,
-        sub_objective_id: str | None = None,
+        dimension_id: str | None = None,
         active: bool | None = None,
         type: QuestionType | None = None,
         search: str | None = None,
@@ -458,7 +458,7 @@ class AsyncZelinqaConfigurationClient:
                 path=_QUESTIONS,
                 params=_questions_params(
                     state=state,
-                    sub_objective_id=sub_objective_id,
+                    dimension_id=dimension_id,
                     active=active,
                     type=type,
                     search=search,
@@ -473,7 +473,7 @@ class AsyncZelinqaConfigurationClient:
         self,
         *,
         state: ConfigurationState | None = None,
-        sub_objective_id: str | None = None,
+        dimension_id: str | None = None,
         active: bool | None = None,
         type: QuestionType | None = None,
         search: str | None = None,
@@ -486,7 +486,7 @@ class AsyncZelinqaConfigurationClient:
         while True:
             page = await self.list_questions(
                 state=state,
-                sub_objective_id=sub_objective_id,
+                dimension_id=dimension_id,
                 active=active,
                 type=type,
                 search=search,
@@ -503,7 +503,7 @@ class AsyncZelinqaConfigurationClient:
         self,
         *,
         state: ConfigurationState | None = None,
-        sub_objective_id: str | None = None,
+        dimension_id: str | None = None,
         active: bool | None = None,
         type: QuestionType | None = None,
         search: str | None = None,
@@ -516,7 +516,7 @@ class AsyncZelinqaConfigurationClient:
                 path=_QUESTIONS,
                 params=_questions_params(
                     state=state,
-                    sub_objective_id=sub_objective_id,
+                    dimension_id=dimension_id,
                     active=active,
                     type=type,
                     search=search,

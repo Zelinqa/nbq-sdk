@@ -112,7 +112,7 @@ def test_configuration_metadata_and_explicit_null_are_preserved():
         "source": "llm_generated",
         "selection_mode": None,
         "choices": [],
-        "sub_objective_id": "so",
+        "dimension_id": "so",
         "active": True,
     }
     assert ConfiguredQuestion.model_validate(question).source == "llm_generated"

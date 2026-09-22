@@ -1,5 +1,5 @@
 /**
- * Configuration client of the NBQ Engine V1 API.
+ * Configuration client of the Zelinqa V1 API.
  *
  * Requires a management key. Scopes are least privilege and checked per route:
  * `configuration:read` to read the published corpus, `configuration:write` to
@@ -38,7 +38,7 @@ function questionsQuery(
 ): Readonly<Record<string, string | number | boolean | undefined>> {
   return {
     state: query?.state,
-    sub_objective_id: query?.sub_objective_id,
+    dimension_id: query?.dimension_id,
     active: query?.active,
     type: query?.type,
     search: query?.search,
@@ -83,7 +83,7 @@ export class ZelinqaConfigurationClient {
   }
 
   /**
-   * `GET /v1/configuration` — objective, sub-objectives, success informations and
+   * `GET /v1/configuration` — objective, dimensions, success informations and
    * questions. `state: "draft"` requires `configuration:write`.
    */
   public async getConfiguration(

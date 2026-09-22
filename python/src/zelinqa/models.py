@@ -1,4 +1,4 @@
-"""Pydantic models for the NBQ Engine API V1.
+"""Pydantic models for the Zelinqa API V1.
 
 One class per named schema of ``openapi/nbq-v1.openapi.yaml``, with the same
 name. Closed enumerations are exposed as ``Literal`` type aliases.
@@ -25,8 +25,8 @@ QuestionSource: TypeAlias = Literal["user", "llm_generated"]
 QuestionOutcome: TypeAlias = Literal["asked_answered", "asked_no_answer", "refused"]
 OutcomeSource: TypeAlias = Literal["client", "inferred"]
 ObjectiveOverrideValue: TypeAlias = Literal["achieved", "not_achieved"]
-SubObjectiveOverrideValue: TypeAlias = Literal["achieved", "not_achieved", "excluded"]
-SubObjectiveSelectionMode: TypeAlias = Literal["restrict", "prefer"]
+DimensionOverrideValue: TypeAlias = Literal["achieved", "not_achieved", "excluded"]
+DimensionSelectionMode: TypeAlias = Literal["restrict", "prefer"]
 SessionStatus: TypeAlias = Literal["active", "completed", "stopped"]
 NextAction: TypeAlias = Literal["ask", "stop"]
 StopReason: TypeAlias = Literal["no_question_available"]
@@ -45,7 +45,7 @@ DegradedReason: TypeAlias = Literal[
 TargetKind: TypeAlias = Literal["data", "exploration"]
 TargetStatus: TypeAlias = Literal["tentative", "confirmed", "conflicted", "not_applicable"]
 ProgressStatus: TypeAlias = Literal["not_started", "in_progress", "covered", "blocked"]
-SubObjectiveEffectiveStatus: TypeAlias = Literal[
+DimensionEffectiveStatus: TypeAlias = Literal[
     "not_started", "in_progress", "covered", "blocked", "excluded"
 ]
 CompletionRole: TypeAlias = Literal["blocking", "contributing", "optional"]
@@ -54,12 +54,12 @@ FeedbackResult: TypeAlias = Literal["success", "partial", "failure"]
 ConfigurationState: TypeAlias = Literal["published", "draft"]
 ConfigurationAuditResourceType: TypeAlias = Literal[
     "objective",
-    "sub_objective",
+    "dimension",
     "success_information",
     "question",
     "configuration",
     "api_key",
-    "nbq",
+    "domain",
 ]
 AuditActorType: TypeAlias = Literal["api_key", "cognito_user"]
 AuditOrigin: TypeAlias = Literal["public_api", "studio_jwt"]
@@ -69,7 +69,7 @@ CompilationErrorCode: TypeAlias = Literal[
     "validation_failed", "llm_unavailable", "timeout", "internal_error"
 ]
 ConfigurationIssueEntity: TypeAlias = Literal[
-    "objective", "sub_objective", "success_information", "question"
+    "objective", "dimension", "success_information", "question"
 ]
 ErrorCode: TypeAlias = Literal[
     "unauthorized",
@@ -127,7 +127,7 @@ class StructuredAnswer(ZelinqaRequestModel):
 
 
 class InitialHistoryItem(ZelinqaRequestModel):
-    """One message of a conversation started outside NBQ."""
+    """One message of a conversation started outside Zelinqa."""
 
     role: Role
     message_id: str | None = Field(default=None, min_length=1, max_length=128)
@@ -170,7 +170,7 @@ class PreviousTurn(ZelinqaRequestModel):
 
 
 class ConversationSummary(ZelinqaRequestModel):
-    """Compact summary of what happened since the last NBQ call."""
+    """Compact summary of what happened since the last Zelinqa call."""
 
     mode: Literal["summary"] = "summary"
     text: str = Field(min_length=1, max_length=16000)
@@ -194,13 +194,13 @@ class ConversationMessage(ZelinqaRequestModel):
 
 
 class ConversationMessageDelta(ZelinqaRequestModel):
-    """Ordered delta of the messages NBQ has not seen yet."""
+    """Ordered delta of the messages Zelinqa has not seen yet."""
 
     mode: Literal["messages"] = "messages"
     messages: list[ConversationMessage] = Field(min_length=1, max_length=100)
 
 
-#: Context that appeared since the last NBQ call: a summary or a message delta.
+#: Context that appeared since the last Zelinqa call: a summary or a message delta.
 ContextUpdate: TypeAlias = Annotated[
     ConversationSummary | ConversationMessageDelta,
     Field(discriminator="mode"),
@@ -233,31 +233,31 @@ class NotApplicableDataUpdate(ZelinqaRequestModel):
 DataClientUpdate: TypeAlias = SetDataUpdate | UnsetDataUpdate | NotApplicableDataUpdate
 
 
-class SetSubObjectiveOverride(ZelinqaRequestModel):
-    """Force a sub-objective to achieved or prevent an early completion."""
+class SetDimensionOverride(ZelinqaRequestModel):
+    """Force a dimension to achieved or prevent an early completion."""
 
     id: str = Field(min_length=1, max_length=128)
     operation: Literal["set"] = "set"
     status: ObjectiveOverrideValue
 
 
-class ExcludeSubObjectiveOverride(ZelinqaRequestModel):
-    """Remove a sub-objective from selection and from the objective progress."""
+class ExcludeDimensionOverride(ZelinqaRequestModel):
+    """Remove a dimension from selection and from the objective progress."""
 
     id: str = Field(min_length=1, max_length=128)
     operation: Literal["exclude"] = "exclude"
 
 
-class ClearSubObjectiveOverride(ZelinqaRequestModel):
-    """Drop a previously set sub-objective override."""
+class ClearDimensionOverride(ZelinqaRequestModel):
+    """Drop a previously set dimension override."""
 
     id: str = Field(min_length=1, max_length=128)
     operation: Literal["clear"] = "clear"
 
 
-#: A sub-objective override: ``set``, ``exclude`` or ``clear``.
-SubObjectiveOverrideUpdate: TypeAlias = Annotated[
-    SetSubObjectiveOverride | ExcludeSubObjectiveOverride | ClearSubObjectiveOverride,
+#: A dimension override: ``set``, ``exclude`` or ``clear``.
+DimensionOverrideUpdate: TypeAlias = Annotated[
+    SetDimensionOverride | ExcludeDimensionOverride | ClearDimensionOverride,
     Field(discriminator="operation"),
 ]
 
@@ -286,30 +286,30 @@ class ClientUpdates(ZelinqaRequestModel):
     """Explicit updates from the calling system. They win over inference."""
 
     data: list[DataClientUpdate] | None = Field(default=None, max_length=100)
-    sub_objectives: list[SubObjectiveOverrideUpdate] | None = Field(default=None, max_length=100)
+    dimensions: list[DimensionOverrideUpdate] | None = Field(default=None, max_length=100)
     objective: ObjectiveOverrideUpdate | None = None
 
     @model_validator(mode="after")
     def _at_least_one_field(self) -> ClientUpdates:
-        if self.data is None and self.sub_objectives is None and self.objective is None:
+        if self.data is None and self.dimensions is None and self.objective is None:
             raise ValueError("client_updates must carry at least one field")
         return self
 
 
-class SubObjectiveSelection(ZelinqaRequestModel):
-    """Restrict or prefer a set of sub-objectives for this call only."""
+class DimensionSelection(ZelinqaRequestModel):
+    """Restrict or prefer a set of dimensions for this call only."""
 
     ids: list[Annotated[str, Field(min_length=1, max_length=128)]] = Field(
         min_length=1, max_length=100
     )
-    mode: SubObjectiveSelectionMode
+    mode: DimensionSelectionMode
 
 
 class SelectionOptions(ZelinqaRequestModel):
     """Selection constraints applied before the ranking, for this call only."""
 
     candidate_count: int | None = Field(default=None, ge=1, le=10)
-    sub_objectives: SubObjectiveSelection | None = None
+    dimensions: DimensionSelection | None = None
     allowed_question_types: list[QuestionType] | None = Field(default=None, min_length=1)
     required_target_ids: list[Annotated[str, Field(min_length=1, max_length=128)]] | None = Field(
         default=None, min_length=1, max_length=100
@@ -394,10 +394,10 @@ class ObjectiveClientOverrideView(ZelinqaResponseModel):
     updated_at: datetime | None = None
 
 
-class SubObjectiveClientOverrideView(ZelinqaResponseModel):
-    """Sub-objective override currently applied by the client."""
+class DimensionClientOverrideView(ZelinqaResponseModel):
+    """Dimension override currently applied by the client."""
 
-    status: SubObjectiveOverrideValue
+    status: DimensionOverrideValue
     updated_at: datetime | None = None
 
 
@@ -410,23 +410,23 @@ class ObjectiveProgress(ZelinqaResponseModel):
     effective_status: ProgressStatus
 
 
-class SubObjectiveProgress(ZelinqaResponseModel):
-    """Sub-objective progress, before and after the client override."""
+class DimensionProgress(ZelinqaResponseModel):
+    """Dimension progress, before and after the client override."""
 
     id: str
     order_position: int
     completion_role: CompletionRole
     computed_status: ProgressStatus
     progress: float
-    client_override: SubObjectiveClientOverrideView | None
-    effective_status: SubObjectiveEffectiveStatus
+    client_override: DimensionClientOverrideView | None
+    effective_status: DimensionEffectiveStatus
 
 
 class ProgressView(ZelinqaResponseModel):
-    """Objective and sub-objective progress of a session."""
+    """Objective and dimension progress of a session."""
 
     objective: ObjectiveProgress
-    sub_objectives: list[SubObjectiveProgress]
+    dimensions: list[DimensionProgress]
 
 
 class NextResponse(ZelinqaResponseModel):
@@ -506,7 +506,7 @@ class SessionStateResponse(ZelinqaResponseModel):
 
 
 class Objective(ZelinqaResponseModel):
-    """The single objective of an NBQ."""
+    """The single objective of a domain."""
 
     name: str
     description: str | None = None
@@ -516,7 +516,7 @@ class Objective(ZelinqaResponseModel):
     order_strength: float
 
 
-class SubObjective(ZelinqaResponseModel):
+class Dimension(ZelinqaResponseModel):
     """One ordered step of the objective."""
 
     id: str
@@ -548,7 +548,7 @@ class ConfiguredChoice(ZelinqaResponseModel):
 
 
 class ConfiguredQuestion(ZelinqaResponseModel):
-    """A question of the corpus, as configured in NBQ Studio."""
+    """A question of the corpus, as configured in Zelinqa Studio."""
 
     id: str
     text: str
@@ -556,20 +556,27 @@ class ConfiguredQuestion(ZelinqaResponseModel):
     selection_mode: QuestionSelectionMode | None
     source: QuestionSource
     choices: list[ConfiguredChoice]
-    sub_objective_id: str
+    dimension_id: str
     active: bool
 
 
+class DomainMetadata(ZelinqaResponseModel):
+    """Current domain name, independent of the versioned objective."""
+
+    name: str
+
+
 class ConfigurationResponse(ZelinqaResponseModel):
-    """The four objects configured in NBQ Studio."""
+    """The four objects configured in Zelinqa Studio."""
 
     request_id: str
     state: ConfigurationState
     configuration_version: str | None = None
     draft_revision: int | None = None
     published_at: datetime | None = None
+    domain: DomainMetadata
     objective: Objective
-    sub_objectives: list[SubObjective]
+    dimensions: list[Dimension]
     success_informations: list[SuccessInformation]
     questions: list[ConfiguredQuestion]
 
@@ -668,8 +675,8 @@ class ObjectiveChange(ZelinqaRequestModel):
     objective: ObjectivePatch
 
 
-class SubObjectivePatch(ZelinqaRequestModel):
-    """Fields of a sub-objective a ``sub_objective`` change carries."""
+class DimensionPatch(ZelinqaRequestModel):
+    """Fields of a dimension a ``dimension`` change carries."""
 
     id: str = Field(min_length=1, max_length=128)
     name: str | None = Field(default=None, min_length=1, max_length=200)
@@ -677,12 +684,12 @@ class SubObjectivePatch(ZelinqaRequestModel):
     completion_role: CompletionRole | None = None
 
 
-class SubObjectiveChange(ZelinqaRequestModel):
-    """Create, update or delete a sub-objective."""
+class DimensionChange(ZelinqaRequestModel):
+    """Create, update or delete a dimension."""
 
-    entity: Literal["sub_objective"] = "sub_objective"
+    entity: Literal["dimension"] = "dimension"
     operation: ChangeOperation
-    sub_objective: SubObjectivePatch
+    dimension: DimensionPatch
 
 
 class SuccessInformationPatch(ZelinqaRequestModel):
@@ -715,7 +722,7 @@ class QuestionPatch(ZelinqaRequestModel):
     selection_mode: QuestionSelectionMode | None = None
     source: QuestionSource | None = None
     choices: list[ConfiguredChoice] | None = Field(default=None, max_length=50)
-    sub_objective_id: str | None = Field(default=None, min_length=1, max_length=128)
+    dimension_id: str | None = Field(default=None, min_length=1, max_length=128)
     active: bool | None = None
 
 
@@ -729,7 +736,7 @@ class QuestionChange(ZelinqaRequestModel):
 
 #: One configuration operation, discriminated by ``entity``.
 ConfigurationChange: TypeAlias = Annotated[
-    ObjectiveChange | SubObjectiveChange | SuccessInformationChange | QuestionChange,
+    ObjectiveChange | DimensionChange | SuccessInformationChange | QuestionChange,
     Field(discriminator="entity"),
 ]
 
@@ -800,8 +807,8 @@ __all__ = [
     "Candidate",
     "CandidateChoice",
     "ChangeOperation",
+    "ClearDimensionOverride",
     "ClearObjectiveOverride",
-    "ClearSubObjectiveOverride",
     "ClientUpdates",
     "CompilationError",
     "CompilationErrorCode",
@@ -831,9 +838,20 @@ __all__ = [
     "DataClientUpdate",
     "DataValue",
     "DegradedReason",
+    "Dimension",
+    "DimensionChange",
+    "DimensionClientOverrideView",
+    "DimensionEffectiveStatus",
+    "DimensionOverrideUpdate",
+    "DimensionOverrideValue",
+    "DimensionPatch",
+    "DimensionProgress",
+    "DimensionSelection",
+    "DimensionSelectionMode",
+    "DomainMetadata",
     "ErrorCode",
     "ErrorEnvelope",
-    "ExcludeSubObjectiveOverride",
+    "ExcludeDimensionOverride",
     "FeedbackRequest",
     "FeedbackResponse",
     "FeedbackResult",
@@ -876,20 +894,10 @@ __all__ = [
     "SessionStateResponse",
     "SessionStatus",
     "SetDataUpdate",
+    "SetDimensionOverride",
     "SetObjectiveOverride",
-    "SetSubObjectiveOverride",
     "StopReason",
     "StructuredAnswer",
-    "SubObjective",
-    "SubObjectiveChange",
-    "SubObjectiveClientOverrideView",
-    "SubObjectiveEffectiveStatus",
-    "SubObjectiveOverrideUpdate",
-    "SubObjectiveOverrideValue",
-    "SubObjectivePatch",
-    "SubObjectiveProgress",
-    "SubObjectiveSelection",
-    "SubObjectiveSelectionMode",
     "SuccessInformation",
     "SuccessInformationChange",
     "SuccessInformationPatch",

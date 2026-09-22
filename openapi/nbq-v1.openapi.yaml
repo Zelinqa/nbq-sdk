@@ -1,10 +1,10 @@
 openapi: 3.1.0
 info:
-  title: NBQ Engine — API V1
+  title: Zelinqa — API V1
   version: 1.0.0
-  summary: Contrat public du runtime NBQ et de la configuration des banques de questions.
+  summary: Contrat public du runtime Zelinqa et de la configuration des banques de questions.
   description: |
-    Contrat public de NBQ Engine V1, servi sur `https://api.zelinqa.ai`.
+    Contrat public de Zelinqa V1, servi sur `https://api.zelinqa.ai`.
 
     Ce document est la **source de vérité** pour `nbq-sdk` (Python et TypeScript) et
     pour `nbq-mcp`. Les SDK et le serveur MCP sont générés ou alignés depuis ce
@@ -21,7 +21,7 @@ info:
     ## Principes contractuels
 
     - **Le tenant n'est jamais fourni par le client.** L'authorizer de l'API Gateway
-      publique résout la clé, puis injecte le tenant, le NBQ et les scopes. Tout
+      publique résout la clé, puis injecte le tenant, le domaine et les scopes. Tout
       header `x-tenant-id`, `x-nbq-id` ou `x-scopes` présent dans la requête entrante
       est écrasé.
     - **Toute mutation exige `Idempotency-Key`.** Même clé et même corps renvoient la
@@ -30,7 +30,7 @@ info:
     - **Toute mutation d'une session existante exige `state_version`**, en contrôle
       optimiste.
     - **Les identifiants du tour précédent sont optionnels.** `decision_id`,
-      `question_id` et `outcome` aident NBQ ; leur absence n'est pas une erreur, le
+      `question_id` et `outcome` aident Zelinqa ; leur absence n'est pas une erreur, le
       moteur les résout depuis la décision en attente et les messages observés. Une
       valeur explicite du client reste prioritaire sur l'inférence.
     - **Le verbatim est optionnel.** `user_text` peut être omis quand une réponse
@@ -45,12 +45,12 @@ info:
 
     ## Arrêts souples
 
-    NBQ ne décide pas à la place de l'appelant. Lorsque `max_turns` est atteint, que
+    Zelinqa ne décide pas à la place de l'appelant. Lorsque `max_turns` est atteint, que
     l'objectif est déjà atteint ou que l'éligibilité normale est vide, `/next`
     renvoie **encore la meilleure question disponible** et signale la situation dans
     `warnings`. Un `action: stop` n'est produit que lorsqu'aucune question
     identifiable n'existe réellement. Les exclusions dures — question inactive,
-    sous-objectif exclu par le client, contrainte stricte de l'appel — ne sont jamais
+    dimension exclu par le client, contrainte stricte de l'appel — ne sont jamais
     violées, et toute question retournée porte un `question_id` valide.
 
     ## Scopes de clé API
@@ -104,16 +104,16 @@ info:
 
 servers:
   - url: https://api.zelinqa.ai
-    description: API publique NBQ
+    description: API publique Zelinqa
 
 tags:
   - name: sessions
     description: |
-      Cycle de vie d'une conversation NBQ : création, sélection de la question
+      Cycle de vie d'une conversation Zelinqa : création, sélection de la question
       suivante, mises à jour hors tour, reprise et retour de résultat.
   - name: configuration
     description: |
-      Lecture et modification de la configuration éditoriale d'un NBQ, puis
+      Lecture et modification de la configuration éditoriale d'un domaine, puis
       publication asynchrone de l'artefact moteur.
 
 security:
@@ -131,7 +131,7 @@ paths:
 
         `initial_history` sert uniquement à reprendre une conversation commencée
         ailleurs — migration d'un intégrateur 0.9, ou échanges antérieurs à
-        l'activation de NBQ. Il est consommé **une seule fois** en mémoire pour
+        l'activation de Zelinqa. Il est consommé **une seule fois** en mémoire pour
         construire l'état initial, puis n'est persisté ni dans l'état, ni dans le
         journal, ni dans les logs applicatifs, et n'est jamais renvoyé. Si le
         tracing LLM est activé par Zelinqa, le prompt peut apparaître dans
@@ -156,7 +156,7 @@ paths:
                   client_reference: crm-lead-8842
                   max_turns: 15
               reprise_conversation:
-                summary: Conversation déjà commencée hors NBQ
+                summary: Conversation déjà commencée hors Zelinqa
                 value:
                   client_reference: crm-lead-8843
                   initial_history:
@@ -199,7 +199,7 @@ paths:
         l'état, recalcule les progressions, puis classe les questions éligibles.
 
         Le client n'a pas à savoir quelle candidate son agent a utilisée : si
-        `decision_id`, `question_id` ou `outcome` sont absents, NBQ les résout depuis
+        `decision_id`, `question_id` ou `outcome` sont absents, Zelinqa les résout depuis
         la décision en attente, le texte de l'agent, la réponse structurée et le
         contexte. Une reformulation de la question par l'agent hôte reste
         rattachable.
@@ -240,7 +240,7 @@ paths:
                     structured_answer:
                       choice_ids: [choice_contemporain]
               rattrapage_de_contexte:
-                summary: Messages échangés sans passer par NBQ, plus une donnée connue du client
+                summary: Messages échangés sans passer par Zelinqa, plus une donnée connue du client
                 value:
                   state_version: 5
                   context_update:
@@ -254,13 +254,13 @@ paths:
                       - id: has_pets
                         value: true
               selection_contrainte:
-                summary: L'agent veut deux questions fermées dans un sous-objectif précis
+                summary: L'agent veut deux questions fermées dans une dimension précis
                 value:
                   state_version: 6
                   selection:
                     candidate_count: 2
                     allowed_question_types: [single_choice, multiple_choice]
-                    sub_objectives:
+                    dimensions:
                       ids: [so_besoin]
                       mode: restrict
       responses:
@@ -298,8 +298,8 @@ paths:
       summary: Appliquer un contexte ou une mise à jour sans sélectionner de question
       description: |
         Même réducteur que `/next`, sans la phase de sélection. Sert à rattraper des
-        messages qui n'ont pas transité par NBQ, synchroniser une donnée déjà connue
-        du système appelant, corriger une valeur, ou piloter un sous-objectif.
+        messages qui n'ont pas transité par Zelinqa, synchroniser une donnée déjà connue
+        du système appelant, corriger une valeur, ou piloter une dimension.
 
         La décision en attente reste en attente, sauf si le contexte fourni permet
         de la résoudre sans ambiguïté.
@@ -328,11 +328,11 @@ paths:
                 value:
                   state_version: 2
                   client_updates:
-                    sub_objectives:
+                    dimensions:
                       - id: so_livraison
                         operation: exclude
               resume_intermediaire:
-                summary: Échanges hors NBQ résumés par l'agent hôte
+                summary: Échanges hors Zelinqa résumés par l'agent hôte
                 value:
                   state_version: 3
                   context_update:
@@ -403,7 +403,7 @@ paths:
         Enregistre ce que la conversation a produit, sans modifier rétroactivement
         le scoring ni l'état de la session.
 
-        Le vocabulaire est volontairement générique : NBQ ne suppose pas qu'une
+        Le vocabulaire est volontairement générique : Zelinqa ne suppose pas qu'une
         conversation est toujours une qualification commerciale. `label` permet à
         l'intégrateur de nommer son propre résultat métier — « achat »,
         « rendez-vous », « dossier complété ».
@@ -462,8 +462,8 @@ paths:
       tags: [configuration]
       summary: Lire la configuration éditoriale
       description: |
-        Renvoie les quatre objets configurés dans NBQ Studio : objectif,
-        sous-objectifs, informations de réussite et questions.
+        Renvoie les quatre objets configurés dans Zelinqa Studio : objectif,
+        dimensions, informations de réussite et questions.
 
         `state=published` (défaut) renvoie la configuration active et exige
         `configuration:read`. `state=draft` renvoie le brouillon en cours d'édition
@@ -535,7 +535,7 @@ paths:
           description: |
             `draft` exige `configuration:write`, contrôlé par le service et non
             par l'authorizer, qui ne voit pas les paramètres de requête.
-        - name: sub_objective_id
+        - name: dimension_id
           in: query
           required: false
           schema:
@@ -601,7 +601,7 @@ paths:
               schema:
                 type: string
               example: |
-                id,text,type,choices,sub_objective_id,active
+                id,text,type,choices,dimension_id,active
                 q_style,"Quel style de canapé recherchez-vous ?",single_choice,"choice_contemporain|choice_scandinave|choice_classique",so_besoin,true
                 q_budget,"Quel budget souhaitez-vous consacrer au canapé ?",open,,so_budget,true
         '401':
@@ -616,7 +616,7 @@ paths:
       tags: [configuration]
       summary: Consulter le journal des changements
       description: |
-        Renvoie les actions de configuration du NBQ, de la plus récente à la
+        Renvoie les actions de configuration du domaine, de la plus récente à la
         plus ancienne. Cette lecture est réservée au scope
         `configuration:publish` : le journal contient l'identité des opérateurs
         et n'est pas une simple lecture du corpus.
@@ -734,7 +734,7 @@ paths:
                         id: q_delivery_window
                         text: À quelle période souhaitez-vous être livré ?
                         type: single_choice
-                        sub_objective_id: so_livraison
+                        dimension_id: so_livraison
                         active: true
                         choices:
                           - id: choice_1m
@@ -807,7 +807,7 @@ paths:
         compilation. Une ancienne version compilée reste lisible pour terminer les
         sessions qui l'utilisent déjà.
 
-        Un second publish du même NBQ alors qu'un job est `queued` ou `running`
+        Un second publish du même domaine alors qu'un job est `queued` ou `running`
         retourne `409 compilation_in_progress` avec le `compilation_id` en cours.
 
         Suivre l'avancement avec
@@ -942,7 +942,7 @@ paths:
 
         Différence structurante avec la V1 : ici le client fournit lui-même
         `session_id` et renvoie l'historique à chaque appel ; le moteur ne conserve
-        aucun état. En V1, NBQ alloue la session via `POST /v1/sessions` et maintient
+        aucun état. En V1, Zelinqa alloue la session via `POST /v1/sessions` et maintient
         l'état canonique côté serveur.
 
         Remplacée par `POST /v1/sessions/{session_id}/next`. Correspondance champ à
@@ -1043,7 +1043,7 @@ components:
     ApiKeyAuth:
       type: http
       scheme: bearer
-      bearerFormat: NBQ API key
+      bearerFormat: Zelinqa API key
       description: |
         Clé d'intégration préfixée `nbq_live_`, envoyée dans
         `Authorization: Bearer nbq_live_…` et résolue par l'authorizer Lambda de
@@ -1066,7 +1066,7 @@ components:
         type: string
         minLength: 1
         maxLength: 128
-      description: Identifiant opaque de session attribué par NBQ à la création.
+      description: Identifiant opaque de session attribué par Zelinqa à la création.
 
     IdempotencyKey:
       name: Idempotency-Key
@@ -1179,7 +1179,7 @@ components:
 
         `decision_id`, `question_id` et `outcome` sont des **aides optionnelles**,
         jamais des identifiants que le client devrait fabriquer. Lorsqu'ils manquent,
-        NBQ résout la candidate utilisée depuis la décision en attente,
+        Zelinqa résout la candidate utilisée depuis la décision en attente,
         `assistant_text`, la réponse structurée et le contexte — ce qui permet à
         l'agent hôte de reformuler librement les questions. Une valeur explicite du
         client reste prioritaire sur l'inférence et est validée.
@@ -1224,7 +1224,7 @@ components:
           summary: '#/components/schemas/ConversationSummary'
           messages: '#/components/schemas/ConversationMessageDelta'
       description: |
-        Contexte apparu depuis le dernier appel NBQ. Le client choisit un résumé
+        Contexte apparu depuis le dernier appel Zelinqa. Le client choisit un résumé
         compact ou le delta ordonné des messages ; il ne renvoie jamais l'historique
         déjà traité.
 
@@ -1347,11 +1347,11 @@ components:
           maxItems: 100
           items:
             $ref: '#/components/schemas/DataClientUpdate'
-        sub_objectives:
+        dimensions:
           type: array
           maxItems: 100
           items:
-            $ref: '#/components/schemas/SubObjectiveOverrideUpdate'
+            $ref: '#/components/schemas/DimensionOverrideUpdate'
         objective:
           $ref: '#/components/schemas/ObjectiveOverrideUpdate'
 
@@ -1425,15 +1425,15 @@ components:
       type: string
       enum: [achieved, not_achieved]
 
-    SubObjectiveOverrideValue:
+    DimensionOverrideValue:
       type: string
       enum: [achieved, not_achieved, excluded]
       description: |
-        `achieved` force le sous-objectif à couvert. `not_achieved` empêche une
+        `achieved` force la dimension à couvert. `not_achieved` empêche une
         complétion calculée prématurée. `excluded` le retire de la sélection et des
         dénominateurs de progression de l'objectif.
 
-    SubObjectiveOverrideUpdate:
+    DimensionOverrideUpdate:
       oneOf:
         - type: object
           additionalProperties: false
@@ -1503,8 +1503,8 @@ components:
           minimum: 1
           maximum: 10
           description: Remplace pour cet appel le nombre de propositions défini dans la configuration.
-        sub_objectives:
-          $ref: '#/components/schemas/SubObjectiveSelection'
+        dimensions:
+          $ref: '#/components/schemas/DimensionSelection'
         allowed_question_types:
           type: array
           minItems: 1
@@ -1530,7 +1530,7 @@ components:
             minLength: 1
             maxLength: 128
 
-    SubObjectiveSelection:
+    DimensionSelection:
       type: object
       additionalProperties: false
       required: [ids, mode]
@@ -1548,7 +1548,7 @@ components:
           type: string
           enum: [restrict, prefer]
           description: |
-            `restrict` interdit strictement les questions hors de ces sous-objectifs.
+            `restrict` interdit strictement les questions hors de ces dimensions.
             `prefer` les favorise mais autorise un repli si aucun candidat éligible
             n'y reste.
 
@@ -1577,7 +1577,7 @@ components:
           type: string
           enum: [success, partial, failure]
           description: |
-            Vocabulaire générique : NBQ ne suppose pas qu'une conversation est une
+            Vocabulaire générique : Zelinqa ne suppose pas qu'une conversation est une
             qualification commerciale.
         label:
           type: string
@@ -1595,7 +1595,7 @@ components:
               - type: 'null'
           maxProperties: 50
           description: |
-            Faits courts de corrélation non interprétés par NBQ : identifiant CRM,
+            Faits courts de corrélation non interprétés par Zelinqa : identifiant CRM,
             montant, devise ou indicateur. Taille sérialisée maximale : 4 Kio.
             Les messages, réponses, résumés, prompts et transcripts sont refusés.
 
@@ -1712,7 +1712,7 @@ components:
         - eligibility_exhausted_fallback
         - constraints_relaxed
       description: |
-        Conditions d'arrêt réunies, sans que NBQ interrompe la conversation.
+        Conditions d'arrêt réunies, sans que Zelinqa interrompe la conversation.
 
         - `max_turns_reached` : la limite souple est atteinte ou dépassée ;
         - `objective_achieved` : les conditions de réussite sont satisfaites ;
@@ -1726,7 +1726,7 @@ components:
       enum: [no_question_available]
       description: |
         Unique cause d'arrêt dur : aucune question identifiable ne subsiste après
-        application des exclusions dures — question inactive, sous-objectif exclu par
+        application des exclusions dures — question inactive, dimension exclu par
         le client, contrainte stricte de l'appel. Les autres situations terminales
         remontent par `warnings`, la conversation restant décidée par l'appelant.
 
@@ -1754,7 +1754,7 @@ components:
           maxLength: 4000
           description: |
             Libellé publié de la question. L'agent hôte reste libre de le reformuler :
-            NBQ sait rattacher un texte reformulé à sa question au tour suivant.
+            Zelinqa sait rattacher un texte reformulé à sa question au tour suivant.
         type:
           $ref: '#/components/schemas/QuestionType'
         choices:
@@ -1892,13 +1892,13 @@ components:
           type: string
         decision_id:
           type: [string, 'null']
-          description: Nul lorsque la question a été traitée hors d'une décision NBQ.
+          description: Nul lorsque la question a été traitée hors d'une décision Zelinqa.
         outcome:
           $ref: '#/components/schemas/QuestionOutcome'
         source:
           type: string
           enum: [client, inferred]
-          description: Indique si l'outcome a été fourni par le client ou résolu par NBQ.
+          description: Indique si l'outcome a été fourni par le client ou résolu par Zelinqa.
         message_id:
           type: [string, 'null']
         occurred_at:
@@ -1962,7 +1962,7 @@ components:
 
             ⚠️ `coverage` sert à mesurer l'avancement et à classer les questions,
             **jamais à décider de la réussite**. La complétion d'un
-            sous-objectif se calcule à partir de `status`, où seuls `confirmed`
+            dimension se calcule à partir de `status`, où seuls `confirmed`
             et `not_applicable` comptent : une information `tentative` fait
             monter la progression visible sans jamais permettre de déclarer
             l'objectif atteint. Les deux grandeurs se ressemblent et ne se
@@ -1971,14 +1971,14 @@ components:
     ProgressView:
       type: object
       additionalProperties: false
-      required: [objective, sub_objectives]
+      required: [objective, dimensions]
       properties:
         objective:
           $ref: '#/components/schemas/ObjectiveProgress'
-        sub_objectives:
+        dimensions:
           type: array
           items:
-            $ref: '#/components/schemas/SubObjectiveProgress'
+            $ref: '#/components/schemas/DimensionProgress'
 
     ProgressStatus:
       type: string
@@ -1996,8 +1996,8 @@ components:
           minimum: 0
           maximum: 1
           description: |
-            Agrégation des sous-objectifs pondérée par leur rôle de complétion. Les
-            sous-objectifs exclus sortent du dénominateur.
+            Agrégation des dimensions pondérée par leur rôle de complétion. Les
+            dimensions exclus sortent du dénominateur.
         client_override:
           oneOf:
             - $ref: '#/components/schemas/ObjectiveClientOverrideView'
@@ -2005,7 +2005,7 @@ components:
         effective_status:
           $ref: '#/components/schemas/ProgressStatus'
 
-    SubObjectiveProgress:
+    DimensionProgress:
       type: object
       additionalProperties: false
       required: [id, order_position, completion_role, computed_status, progress, client_override, effective_status]
@@ -2027,7 +2027,7 @@ components:
           maximum: 1
         client_override:
           oneOf:
-            - $ref: '#/components/schemas/SubObjectiveClientOverrideView'
+            - $ref: '#/components/schemas/DimensionClientOverrideView'
             - type: 'null'
         effective_status:
           type: string
@@ -2036,7 +2036,7 @@ components:
             Statut consommable par le client après application de `client_override`
             au `computed_status` : sans override, le statut calculé ; `achieved`
             force `covered` ; `not_achieved` conserve le statut calculé sauf que
-            `covered` redevient `in_progress` ; `excluded` retire le sous-objectif de
+            `covered` redevient `in_progress` ; `excluded` retire la dimension de
             la sélection et des agrégations de l'objectif.
 
     ObjectiveClientOverrideView:
@@ -2050,13 +2050,13 @@ components:
           type: string
           format: date-time
 
-    SubObjectiveClientOverrideView:
+    DimensionClientOverrideView:
       type: object
       additionalProperties: false
       required: [status]
       properties:
         status:
-          $ref: '#/components/schemas/SubObjectiveOverrideValue'
+          $ref: '#/components/schemas/DimensionOverrideValue'
         updated_at:
           type: string
           format: date-time
@@ -2103,7 +2103,7 @@ components:
       type: string
       enum: [blocking, contributing, optional]
       description: |
-        Rôle d'un sous-objectif dans la réussite de l'objectif.
+        Rôle d'une dimension dans la réussite de l'objectif.
 
         - `blocking` : doit être couvert pour conclure normalement ;
         - `contributing` : participe au niveau de qualification exigé ;
@@ -2115,9 +2115,9 @@ components:
       type: string
       enum: [essential, balanced, deep]
       description: |
-        Exigence de couverture des sous-objectifs `contributing`.
+        Exigence de couverture des dimensions `contributing`.
 
-        - `essential` : seules les informations de réussite et les sous-objectifs
+        - `essential` : seules les informations de réussite et les dimensions
           `blocking` sont exigés ;
         - `balanced` : couverture moyenne des `contributing` exigée à `0.80` ;
         - `deep` : couverture moyenne des `contributing` exigée à `1.00`.
@@ -2125,9 +2125,9 @@ components:
     ConfigurationResponse:
       type: object
       additionalProperties: false
-      required: [request_id, state, objective, sub_objectives, success_informations, questions]
+      required: [request_id, state, domain, objective, dimensions, success_informations, questions]
       description: |
-        Les quatre objets visibles dans NBQ Studio. Ni prototypes de réponse, ni
+        Le domaine courant et les quatre objets configurés dans Zelinqa Studio. Ni prototypes de réponse, ni
         graphe de relations, ni matrices, ni artefact compilé n'apparaissent ici :
         ce sont des internes de compilation.
       properties:
@@ -2145,12 +2145,14 @@ components:
         published_at:
           type: [string, 'null']
           format: date-time
+        domain:
+          $ref: '#/components/schemas/DomainMetadata'
         objective:
           $ref: '#/components/schemas/Objective'
-        sub_objectives:
+        dimensions:
           type: array
           items:
-            $ref: '#/components/schemas/SubObjective'
+            $ref: '#/components/schemas/Dimension'
         success_informations:
           type: array
           items:
@@ -2159,6 +2161,15 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ConfiguredQuestion'
+
+    DomainMetadata:
+      type: object
+      additionalProperties: false
+      required: [name]
+      description: Nom actuel du domaine, relu sans republication. Distinct de l'objectif versionné.
+      properties:
+        name:
+          type: string
 
     Objective:
       type: object
@@ -2191,9 +2202,9 @@ components:
           type: number
           minimum: 0
           maximum: 1
-          description: Force avec laquelle l'ordre des sous-objectifs influence la sélection.
+          description: Force avec laquelle l'ordre des dimensions influence la sélection.
 
-    SubObjective:
+    Dimension:
       type: object
       additionalProperties: false
       required: [id, name, order_position, completion_role]
@@ -2218,9 +2229,9 @@ components:
       required: [id, label, schema, primary_question_id]
       description: |
         Une information de réussite est obligatoire par définition : aucun champ
-        `required` n'est exposé. Son rattachement à un sous-objectif est dérivé de sa
+        `required` n'est exposé. Son rattachement à une dimension est dérivé de sa
         question principale, et elle ne peut pas dépendre uniquement d'un
-        sous-objectif `optional`.
+        dimension `optional`.
       properties:
         id:
           type: string
@@ -2243,7 +2254,7 @@ components:
     ConfiguredQuestion:
       type: object
       additionalProperties: false
-      required: [id, text, type, selection_mode, source, sub_objective_id, active, choices]
+      required: [id, text, type, selection_mode, source, dimension_id, active, choices]
       description: |
         Champs volontairement absents en V1 : `must_ask`, `requirement_policy`,
         `importance`, `editor_weight`, `cost_profile`, sensibilité, effort et
@@ -2274,11 +2285,11 @@ components:
           maxItems: 50
           items:
             $ref: '#/components/schemas/ConfiguredChoice'
-        sub_objective_id:
+        dimension_id:
           type: string
           minLength: 1
           maxLength: 128
-          description: Exactement un sous-objectif.
+          description: Exactement une dimension.
         active:
           type: boolean
 
@@ -2324,7 +2335,7 @@ components:
 
     ConfigurationAuditResourceType:
       type: string
-      enum: [objective, sub_objective, success_information, question, configuration, api_key, nbq]
+      enum: [objective, dimension, success_information, question, configuration, api_key, domain]
 
     ConfigurationAuditActor:
       type: object
@@ -2444,14 +2455,14 @@ components:
     ConfigurationChange:
       oneOf:
         - $ref: '#/components/schemas/ObjectiveChange'
-        - $ref: '#/components/schemas/SubObjectiveChange'
+        - $ref: '#/components/schemas/DimensionChange'
         - $ref: '#/components/schemas/SuccessInformationChange'
         - $ref: '#/components/schemas/QuestionChange'
       discriminator:
         propertyName: entity
         mapping:
           objective: '#/components/schemas/ObjectiveChange'
-          sub_objective: '#/components/schemas/SubObjectiveChange'
+          dimension: '#/components/schemas/DimensionChange'
           success_information: '#/components/schemas/SuccessInformationChange'
           question: '#/components/schemas/QuestionChange'
 
@@ -2494,18 +2505,18 @@ components:
               minimum: 0
               maximum: 1
 
-    SubObjectiveChange:
+    DimensionChange:
       type: object
       additionalProperties: false
-      required: [entity, operation, sub_objective]
+      required: [entity, operation, dimension]
       properties:
         entity:
           type: string
-          const: sub_objective
+          const: dimension
         operation:
           type: string
           enum: [create, update, delete]
-        sub_objective:
+        dimension:
           type: object
           additionalProperties: false
           required: [id]
@@ -2592,7 +2603,7 @@ components:
               maxItems: 50
               items:
                 $ref: '#/components/schemas/ConfiguredChoice'
-            sub_objective_id:
+            dimension_id:
               type: string
               minLength: 1
               maxLength: 128
@@ -2714,11 +2725,11 @@ components:
             révéleraient prématurés. Il sera figé avant la génération des SDK.
 
             Codes déjà employés, à traiter comme un socle et non comme une liste
-            exhaustive : `question_without_sub_objective`,
+            exhaustive : `question_without_dimension`,
             `question_without_target`, `inactive_primary_question`,
             `success_information_without_schema`,
             `success_information_without_active_question`,
-            `success_information_only_in_optional_sub_objective`,
+            `success_information_only_in_optional_dimension`,
             `invalid_choice_mapping`, `duplicate_id`, `unknown_reference`,
             `draft_revision_mismatch`.
 
@@ -2729,7 +2740,7 @@ components:
           minLength: 1
         entity:
           type: string
-          enum: [objective, sub_objective, success_information, question]
+          enum: [objective, dimension, success_information, question]
         entity_id:
           type: string
           maxLength: 128
@@ -2788,7 +2799,7 @@ components:
           type: string
           minLength: 1
           maxLength: 128
-          description: Identifiant choisi par le client, contrairement à la V1 où NBQ l'attribue.
+          description: Identifiant choisi par le client, contrairement à la V1 où Zelinqa l'attribue.
         conversation_history:
           type: array
           maxItems: 50
@@ -2864,7 +2875,7 @@ components:
 
     Unauthorized:
       description: |
-        Clé absente, malformée, inconnue, révoquée, expirée, ou rattachée à un NBQ
+        Clé absente, malformée, inconnue, révoquée, expirée, ou rattachée à un domaine
         suspendu. Le refus vient de l'authorizer de la passerelle, avant que la
         requête n'atteigne le service : le corps est donc produit par la passerelle
         et peut ne pas suivre l'enveloppe d'erreur métier.
@@ -2965,7 +2976,7 @@ components:
             $ref: '#/components/schemas/ErrorEnvelope'
           examples:
             compilation_in_progress:
-              summary: Un job est déjà queued ou running pour ce NBQ
+              summary: Un job est déjà queued ou running pour ce domaine
               value:
                 code: compilation_in_progress
                 message: Une compilation est déjà en cours pour cette configuration.
@@ -3115,8 +3126,8 @@ components:
                       message: L'information « Fenêtre de livraison souhaitée » n'a pas de question active.
                       entity: success_information
                       entity_id: delivery_window
-                    - code: success_information_only_in_optional_sub_objective
-                      message: L'information « Budget annuel » ne dépend que d'un sous-objectif optionnel.
+                    - code: success_information_only_in_optional_dimension
+                      message: L'information « Budget annuel » ne dépend que d'une dimension optionnel.
                       entity: success_information
                       entity_id: annual_budget
             revision_perimee:
@@ -3152,7 +3163,7 @@ components:
             progress: 0
             client_override: null
             effective_status: not_started
-          sub_objectives:
+          dimensions:
             - id: so_besoin
               order_position: 0
               completion_role: blocking
@@ -3214,7 +3225,7 @@ components:
             progress: 0.34
             client_override: null
             effective_status: in_progress
-          sub_objectives:
+          dimensions:
             - id: so_besoin
               order_position: 0
               completion_role: blocking
@@ -3247,7 +3258,7 @@ components:
           api_version: '1.0'
 
     DecisionApresMaxTurns:
-      summary: La limite de tours est dépassée ; NBQ propose encore, l'appelant décide
+      summary: La limite de tours est dépassée ; Zelinqa propose encore, l'appelant décide
       value:
         request_id: req_1003
         session_id: ses_01J8Z
@@ -3273,7 +3284,7 @@ components:
             progress: 0.86
             client_override: null
             effective_status: in_progress
-          sub_objectives:
+          dimensions:
             - id: so_besoin
               order_position: 0
               completion_role: blocking
@@ -3320,7 +3331,7 @@ components:
             progress: 1
             client_override: null
             effective_status: covered
-          sub_objectives:
+          dimensions:
             - id: so_besoin
               order_position: 0
               completion_role: blocking
@@ -3355,13 +3366,15 @@ components:
           api_version: '1.0'
 
     ConfigurationPubliee:
-      summary: Configuration active d'un NBQ de qualification mobilier
+      summary: Configuration active d'un domaine de qualification mobilier
       value:
         request_id: req_1005
         state: published
         configuration_version: cfg_00013
         draft_revision: null
         published_at: '2026-08-28T14:02:00Z'
+        domain:
+          name: Qualification mobilier
         objective:
           name: Qualifier un projet de canapé
           description: Comprendre le besoin, le budget et le délai avant de recommander un produit.
@@ -3369,7 +3382,7 @@ components:
           max_turns: 15
           candidates_per_call: 1
           order_strength: 0.35
-        sub_objectives:
+        dimensions:
           - id: so_besoin
             name: Besoin et usage
             order_position: 0
@@ -3401,7 +3414,7 @@ components:
             type: single_choice
             selection_mode: single
             source: llm_generated
-            sub_objective_id: so_besoin
+            dimension_id: so_besoin
             active: true
             choices:
               - id: choice_contemporain
@@ -3415,7 +3428,7 @@ components:
             type: open
             selection_mode: null
             source: user
-            sub_objective_id: so_budget
+            dimension_id: so_budget
             active: true
             choices: []
           - id: q_delai
@@ -3423,7 +3436,7 @@ components:
             type: single_choice
             selection_mode: single
             source: user
-            sub_objective_id: so_livraison
+            dimension_id: so_livraison
             active: true
             choices:
               - id: choice_1m
@@ -3449,7 +3462,7 @@ components:
             type: single_choice
             selection_mode: single
             source: llm_generated
-            sub_objective_id: so_besoin
+            dimension_id: so_besoin
             active: true
             choices:
               - id: choice_contemporain
@@ -3463,6 +3476,6 @@ components:
             type: open
             selection_mode: null
             source: user
-            sub_objective_id: so_budget
+            dimension_id: so_budget
             active: true
             choices: []

@@ -1,4 +1,4 @@
-"""Live recette of the Python SDK against the staging NBQ "SDK MCP V1 Recette".
+"""Live recette of the Python SDK against the staging Zelinqa "SDK MCP V1 Recette".
 
 Opt-in only: the whole module is skipped unless ``ZELINQA_LIVE=1``, and the ``live``
 marker is excluded from the default ``pytest`` run. Nothing here prints a key,
@@ -16,7 +16,7 @@ Environment
 ``ZELINQA_LIVE_REVOKED_KEY``        a key that was revoked on purpose
 
 Re-runnable by design: the corpus is upserted (read the draft, create what is
-missing, update what exists), so running the suite twice against the same NBQ
+missing, update what exists), so running the suite twice against the same Zelinqa
 converges instead of failing.
 
 The suite deliberately limits model calls and spaces turns to keep this
@@ -67,7 +67,7 @@ RUN_NONCE = uuid.uuid4().hex[:12]
 
 OBJECTIVE = {
     "name": "SDK MCP V1 Recette",
-    "description": "NBQ jetable pour la recette des SDK et du serveur MCP.",
+    "description": "Zelinqa jetable pour la recette des SDK et du serveur MCP.",
     "qualification_level": "balanced",
     "max_turns": 8,
     "candidates_per_call": 2,
@@ -90,7 +90,7 @@ QUESTIONS = [
         "id": "sdk_q_usage",
         "text": "Pour quel usage cherchez-vous ce canapé ?",
         "type": "open",
-        "sub_objective_id": "sdk_so_besoin",
+        "dimension_id": "sdk_so_besoin",
         "active": True,
         "choices": [],
     },
@@ -98,7 +98,7 @@ QUESTIONS = [
         "id": "sdk_q_style",
         "text": "Quel style préférez-vous ?",
         "type": "single_choice",
-        "sub_objective_id": "sdk_so_besoin",
+        "dimension_id": "sdk_so_besoin",
         "active": True,
         "choices": [
             {"id": "sdk_c_contemporain", "label": "Contemporain", "maps_to_value": "contemporain"},
@@ -110,7 +110,7 @@ QUESTIONS = [
         "id": "sdk_q_budget",
         "text": "Quel budget envisagez-vous ?",
         "type": "open",
-        "sub_objective_id": "sdk_so_budget",
+        "dimension_id": "sdk_so_budget",
         "active": True,
         "choices": [],
     },
@@ -118,7 +118,7 @@ QUESTIONS = [
         "id": "sdk_q_delai",
         "text": "Quand souhaitez-vous être livré ?",
         "type": "single_choice",
-        "sub_objective_id": "sdk_so_delai",
+        "dimension_id": "sdk_so_delai",
         "active": True,
         "choices": [
             {"id": "sdk_c_1m", "label": "Dans le mois", "maps_to_value": "dans_le_mois"},
@@ -130,7 +130,7 @@ QUESTIONS = [
         "id": "sdk_q_animaux",
         "text": "Avez-vous des animaux ?",
         "type": "single_choice",
-        "sub_objective_id": "sdk_so_besoin",
+        "dimension_id": "sdk_so_besoin",
         "active": True,
         "choices": [
             {"id": "sdk_c_oui", "label": "Oui", "maps_to_value": True},
@@ -259,25 +259,25 @@ def _read_draft_or_published(client: ZelinqaConfigurationClient) -> Any:
 
 
 def _upsert_changes(existing: Any) -> list[dict[str, Any]]:
-    """Build the ordered batch that makes the live NBQ match the corpus.
+    """Build the ordered batch that makes the live Zelinqa match the corpus.
 
-    Order matters: sub-objectives first, then questions, then the success
+    Order matters: dimensions first, then questions, then the success
     informations that point at them.
     """
 
-    known_sub_objectives = {item.id for item in existing.sub_objectives} if existing else set()
+    known_dimensions = {item.id for item in existing.dimensions} if existing else set()
     known_questions = {item.id for item in existing.questions} if existing else set()
     known_informations = {item.id for item in existing.success_informations} if existing else set()
 
     changes: list[dict[str, Any]] = [
         {"entity": "objective", "operation": "update", "objective": OBJECTIVE}
     ]
-    for sub_objective in SUB_OBJECTIVES:
+    for dimension in SUB_OBJECTIVES:
         changes.append(
             {
-                "entity": "sub_objective",
-                "operation": "update" if sub_objective["id"] in known_sub_objectives else "create",
-                "sub_objective": sub_objective,
+                "entity": "dimension",
+                "operation": "update" if dimension["id"] in known_dimensions else "create",
+                "dimension": dimension,
             }
         )
     for question in QUESTIONS:
@@ -327,7 +327,7 @@ def test_02_manage_key_reads_the_draft(
     assert draft.state == "draft"
     assert draft.draft_revision == state.draft_revision
     assert draft.objective.max_turns == OBJECTIVE["max_turns"]
-    assert {item.id for item in draft.sub_objectives} >= {s["id"] for s in SUB_OBJECTIVES}
+    assert {item.id for item in draft.dimensions} >= {s["id"] for s in SUB_OBJECTIVES}
     assert {item.id for item in draft.questions} >= QUESTION_IDS
     assert {item.id for item in draft.success_informations} >= {
         s["id"] for s in SUCCESS_INFORMATIONS
@@ -521,13 +521,13 @@ def test_16_iter_questions_walks_the_whole_corpus(reader: ZelinqaConfigurationCl
 
 
 def test_17_question_filters_narrow_the_corpus(reader: ZelinqaConfigurationClient) -> None:
-    by_sub_objective = reader.list_questions(sub_objective_id="sdk_so_besoin", limit=200)
-    assert {q.id for q in by_sub_objective.questions} >= {
+    by_dimension = reader.list_questions(dimension_id="sdk_so_besoin", limit=200)
+    assert {q.id for q in by_dimension.questions} >= {
         "sdk_q_usage",
         "sdk_q_style",
         "sdk_q_animaux",
     }
-    assert all(q.sub_objective_id == "sdk_so_besoin" for q in by_sub_objective.questions)
+    assert all(q.dimension_id == "sdk_so_besoin" for q in by_dimension.questions)
 
     by_type = reader.list_questions(type="open", limit=200)
     assert all(question.type == "open" for question in by_type.questions)
@@ -539,7 +539,7 @@ def test_17_question_filters_narrow_the_corpus(reader: ZelinqaConfigurationClien
     active_only = reader.list_questions(active=True, limit=200)
     assert all(question.active for question in active_only.questions)
     print(
-        f"  sub_objective={len(by_sub_objective.questions)} open={len(by_type.questions)} "
+        f"  dimension={len(by_dimension.questions)} open={len(by_type.questions)} "
         f"search={len(by_search.questions)} active={len(active_only.questions)}"
     )
 
@@ -548,7 +548,7 @@ def test_18_csv_export_has_the_documented_header(reader: ZelinqaConfigurationCli
     export = reader.export_questions_csv()
     lines = export.splitlines()
     print(f"  csv_lines={len(lines)}")
-    assert lines[0] == "id,text,type,selection_mode,choices,source,sub_objective_id,active"
+    assert lines[0] == "id,text,type,selection_mode,choices,source,dimension_id,active"
     assert any(line.startswith("sdk_q_budget,") for line in lines[1:])
 
 

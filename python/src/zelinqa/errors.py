@@ -1,4 +1,4 @@
-"""Typed exceptions raised by the NBQ SDK.
+"""Typed exceptions raised by the Zelinqa SDK.
 
 Mapping is driven by the business error envelope ``code`` first, then by the
 HTTP status when the body is not a V1 envelope.
@@ -73,7 +73,7 @@ class ZelinqaCompilationTimeoutError(ZelinqaError):
 
 
 class ZelinqaAPIError(ZelinqaError):
-    """The NBQ API answered with an unsuccessful status."""
+    """The Zelinqa API answered with an unsuccessful status."""
 
     def __init__(
         self,
@@ -168,7 +168,7 @@ class ZelinqaIdempotencyKeyReusedError(ZelinqaConflictError):
 
 
 class ZelinqaCompilationInProgressError(ZelinqaConflictError):
-    """A compilation is already queued or running for this NBQ."""
+    """A compilation is already queued or running for this Zelinqa."""
 
     def __init__(self, message: str, **kwargs: Any) -> None:
         super().__init__(message, **kwargs)
@@ -213,7 +213,7 @@ class ZelinqaIdempotencyContentionError(ZelinqaAPIError):
 
 
 class ZelinqaServerError(ZelinqaAPIError):
-    """The NBQ service failed to process the request."""
+    """The Zelinqa service failed to process the request."""
 
 
 _CODE_ERRORS: dict[str, type[ZelinqaAPIError]] = {
@@ -378,7 +378,7 @@ def _message_of(envelope: Mapping[str, Any], status_code: int) -> str:
         value = envelope.get(key)
         if isinstance(value, str) and value:
             return value
-    return f"NBQ API request failed with status {status_code}"
+    return f"Zelinqa API request failed with status {status_code}"
 
 
 def _details_retry_after(details: Mapping[str, Any]) -> float | None:

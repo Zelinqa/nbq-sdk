@@ -25,7 +25,7 @@ after `session.next()` to avoid copying technical IDs. Choices use
 methods with `await`. See the root README for restart/concurrency rules.
 
 
-An Zelinqa key carries scopes. Studio recommends one key per job, so the SDK is
+A Zelinqa key carries scopes. Studio recommends one key per job, so the SDK is
 split the same way.
 
 | Client | Scope | What it does |
@@ -156,7 +156,7 @@ version = decision.versions.state_version
 state = client.apply_events(
     "ses_01J8Z",
     state_version=version,
-    client_updates={"sub_objectives": [{"id": "so_livraison", "operation": "exclude"}]},
+    client_updates={"dimensions": [{"id": "so_livraison", "operation": "exclude"}]},
 )
 state = client.get_session("ses_01J8Z")
 client.submit_feedback("ses_01J8Z", result="partial")
@@ -196,7 +196,7 @@ decision = session.next(
     selection={
         "candidate_count": 2,
         "allowed_question_types": ["single_choice", "multiple_choice"],
-        "sub_objectives": {"ids": ["so_besoin"], "mode": "restrict"},
+        "dimensions": {"ids": ["so_besoin"], "mode": "restrict"},
     }
 )
 ```
@@ -210,7 +210,7 @@ with ZelinqaConfigurationClient() as studio:
     published = studio.get_configuration()                     # configuration:read
     draft = studio.get_configuration(state="draft")            # needs read + write
 
-    page = studio.list_questions(sub_objective_id="so_besoin", type="single_choice", limit=50)
+    page = studio.list_questions(dimension_id="so_besoin", type="single_choice", limit=50)
     for question in studio.iter_questions(active=True):        # follows the cursor
         print(question.id, question.text)
 
@@ -246,7 +246,7 @@ with ZelinqaConfigurationClient() as studio:
                     "id": "q_delivery_window",
                     "text": "À quelle période souhaitez-vous être livré ?",
                     "type": "single_choice",
-                    "sub_objective_id": "so_livraison",
+                    "dimension_id": "so_livraison",
                     "active": True,
                     "choices": [
                         {"id": "choice_1m", "label": "Dans le mois", "maps_to_value": "dans_le_mois"},
@@ -370,8 +370,8 @@ so the worst case is roughly `timeout × (max_retries + 1)` plus the backoff.
 
 ## Security
 
-**These clients belong in a backend.** An Zelinqa key grants access to your whole
-question bank and to every session of your tenant. Never ship one to a browser,
+**These clients belong in a backend.** A Zelinqa key is restricted to its
+configured domain and scopes. Never ship one to a browser,
 a mobile app or any client you do not control; proxy Zelinqa through your own
 service instead.
 
@@ -379,7 +379,7 @@ service instead.
   `repr`, log line or returned value contains it.
 - Use separate keys per scope. A runtime key must not be able to publish.
 - The tenant is never sent by the client: the gateway authorizer resolves the
-  key and injects the tenant, the Zelinqa and the scopes. Any `x-tenant-id`,
+  key and injects the tenant, the domain and the scopes. Any `x-tenant-id`,
   `x-nbq-id` or `x-scopes` header you send is overwritten.
 - `initial_history` is consumed once in memory to build the initial state. It
   is never persisted, never logged, never returned.
