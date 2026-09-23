@@ -71,6 +71,16 @@ class ZelinqaCompilationTimeoutError(ZelinqaError):
         self.compilation_id = compilation_id
         self.timeout = timeout
 
+    def __reduce__(self) -> tuple[Any, ...]:
+        return (
+            _rebuild,
+            (
+                type(self),
+                (str(self),),
+                {"compilation_id": self.compilation_id, "timeout": self.timeout},
+            ),
+        )
+
 
 class ZelinqaAPIError(ZelinqaError):
     """The Zelinqa API answered with an unsuccessful status."""
@@ -103,6 +113,20 @@ class ZelinqaAPIError(ZelinqaError):
             f"{type(self).__name__}(status_code={self.status_code!r}, code={self.code!r}, "
             f"request_id={self.request_id!r})"
         )
+
+    def __reduce__(self) -> tuple[Any, ...]:
+        # Keyword-only constructor arguments are not replayed by the default
+        # exception pickling, which calls ``cls(*args)``. Rebuild through the
+        # constructor so subclasses derive their attributes from ``details``
+        # again; the process boundary of ``multiprocessing`` relies on this.
+        kwargs = {
+            "status_code": self.status_code,
+            "code": self.code,
+            "request_id": self.request_id,
+            "details": self.details,
+            "retry_after": self.retry_after,
+        }
+        return (_rebuild, (type(self), (self.message,), kwargs))
 
 
 class ZelinqaAuthenticationError(ZelinqaAPIError):
@@ -249,6 +273,13 @@ _STATUS_ERRORS: dict[int, type[ZelinqaAPIError]] = {
     422: ZelinqaValidationError,
     429: ZelinqaRateLimitError,
 }
+
+
+def _rebuild(
+    cls: type[ZelinqaError], args: tuple[Any, ...], kwargs: dict[str, Any]
+) -> ZelinqaError:
+    """Unpickling entry point: replay the constructor with its keyword arguments."""
+    return cls(*args, **kwargs)
 
 
 def _string_list(value: Any) -> list[str]:

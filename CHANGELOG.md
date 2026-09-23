@@ -9,6 +9,9 @@
 - Current question metadata: editorial `source` and semi-open `selection_mode`.
 - Configuration read/edit/publish, compilation polling, CSV export and audit.
 - Typed errors, optimistic concurrency, retry/idempotency support.
+- Python errors survive pickling: `ZelinqaAPIError` subclasses and
+  `ZelinqaCompilationTimeoutError` cross process boundaries (`multiprocessing`,
+  process pools, task queues) with their status, details and derived attributes.
 - The 0.9 routes are no longer exposed by the SDKs. The `nbq` and
   `@zelinqa/nbq` 0.9 packages remain separate distributions.
 
